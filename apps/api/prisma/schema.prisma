@@ -1,0 +1,241 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  email       String   @unique
+  password    String
+  displayName String?  @map("display_name")
+  avatarUrl   String?  @map("avatar_url")
+  isAdmin     Boolean  @default(false) @map("is_admin")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  sessions            Session[]
+  passwordResetTokens PasswordResetToken[]
+  analyticsEvents     AnalyticsEvent[]
+  ownedServers        Server[]          @relation("ServerOwner")
+  memberships         Member[]
+  createdInvites      Invite[]
+  messages            Message[]
+  dmParticipations    DmParticipant[]
+  directMessages      DirectMessage[]
+  friendshipsA        Friendship[]      @relation("FriendA")
+  friendshipsB        Friendship[]      @relation("FriendB")
+
+  @@index([email])
+  @@index([username])
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  refreshToken String   @unique @map("refresh_token")
+  userAgent    String?  @map("user_agent")
+  ipAddress    String?  @map("ip_address")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+  @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  serverId  String?  @map("server_id")
+  name      String
+  payload   String   @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([name])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("analytics_events")
+}
+
+// ─── Phase 2: Servers + Membership ──────────────────────────────────
+
+model Server {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  iconUrl     String?  @map("icon_url")
+  bannerUrl   String?  @map("banner_url")
+  ownerId     String   @map("owner_id")
+  visibility  String   @default("PRIVATE")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  owner    User      @relation("ServerOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members  Member[]
+  invites  Invite[]
+  channels Channel[]
+
+  @@index([ownerId])
+  @@index([slug])
+  @@map("servers")
+}
+
+model Member {
+  id       String   @id @default(uuid())
+  userId   String   @map("user_id")
+  serverId String   @map("server_id")
+  nickname String?
+  role     String   @default("MEMBER")
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, serverId])
+  @@index([serverId])
+  @@index([userId])
+  @@map("members")
+}
+
+model Invite {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  serverId  String    @map("server_id")
+  creatorId String    @map("creator_id")
+  maxUses   Int?      @map("max_uses")
+  uses      Int       @default(0)
+  expiresAt DateTime? @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  server  Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  creator User   @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@index([code])
+  @@index([serverId])
+  @@map("invites")
+}
+
+// ─── Phase 3: Channels ──────────────────────────────────────────────
+
+model Channel {
+  id        String   @id @default(uuid())
+  serverId  String   @map("server_id")
+  name      String
+  topic     String?
+  type      String   @default("TEXT")
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  server   Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([serverId])
+  @@map("channels")
+}
+
+// ─── Phase 4: Messages ──────────────────────────────────────────────
+
+model Message {
+  id        String    @id @default(uuid())
+  channelId String    @map("channel_id")
+  authorId  String    @map("author_id")
+  content   String
+  editedAt  DateTime? @map("edited_at")
+  deleted   Boolean   @default(false)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@index([authorId])
+  @@map("messages")
+}
+
+// ─── Phase 5: Direct Messages ────────────────────────────────────────
+
+model DmConversation {
+  id           String          @id @default(uuid())
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  participants DmParticipant[]
+  messages     DirectMessage[]
+
+  @@map("dm_conversations")
+}
+
+model DmParticipant {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  userId         String   @map("user_id")
+  joinedAt       DateTime @default(now()) @map("joined_at")
+
+  conversation DmConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@index([conversationId])
+  @@map("dm_participants")
+}
+
+model DirectMessage {
+  id             String    @id @default(uuid())
+  conversationId String    @map("conversation_id")
+  authorId       String    @map("author_id")
+  content        String
+  editedAt       DateTime? @map("edited_at")
+  deleted        Boolean   @default(false)
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  conversation DmConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([authorId])
+  @@map("direct_messages")
+}
+
+model Friendship {
+  id        String   @id @default(uuid())
+  userAId   String   @map("user_a_id")
+  userBId   String   @map("user_b_id")
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  userA User @relation("FriendA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User @relation("FriendB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+  @@map("friendships")
+}

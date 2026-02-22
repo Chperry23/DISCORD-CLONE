@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build outputs
+dist/
+.next/
+.turbo/
+
+# database
+*.db
+*.db-journal
+
+# environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# logs
+*.log
+npm-debug.log*
+
+# misc
+.cache/
+coverage/
