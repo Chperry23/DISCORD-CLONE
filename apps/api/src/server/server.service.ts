@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
+import { AuthzService } from "../authz/authz.service";
 import type { CreateServerDto, UpdateServerDto, ServerResponse } from "@discord-clone/shared";
 
 @Injectable()
@@ -13,6 +14,7 @@ export class ServerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly analytics: AnalyticsService,
+    private readonly authz: AuthzService,
   ) {}
 
   async create(dto: CreateServerDto, userId: string): Promise<ServerResponse> {
@@ -49,14 +51,14 @@ export class ServerService {
     return this.toResponse(server, server._count.members);
   }
 
-  async findById(serverId: string): Promise<ServerResponse> {
-    const server = await this.prisma.server.findUnique({
-      where: { id: serverId },
+  async findById(serverId: string, userId: string): Promise<ServerResponse> {
+    const { server } = await this.authz.assertServerReadable(serverId, userId);
+    const withCount = await this.prisma.server.findUnique({
+      where: { id: server.id },
       include: { _count: { select: { members: true } } },
     });
-
-    if (!server) throw new NotFoundException("Server not found");
-    return this.toResponse(server, server._count.members);
+    if (!withCount) throw new NotFoundException("Server not found");
+    return this.toResponse(withCount, withCount._count.members);
   }
 
   async findBySlug(slug: string): Promise<ServerResponse> {
@@ -109,7 +111,7 @@ export class ServerService {
     const server = await this.prisma.server.findUnique({ where: { id: serverId } });
     if (!server) throw new NotFoundException("Server not found");
 
-    await this.assertAdminOrOwner(serverId, userId);
+    await this.authz.assertMemberRole(serverId, userId, ["OWNER", "ADMIN"]);
 
     const updated = await this.prisma.server.update({
       where: { id: serverId },
@@ -168,16 +170,6 @@ export class ServerService {
       serverId,
       payload: { newOwnerId },
     });
-  }
-
-  async assertAdminOrOwner(serverId: string, userId: string): Promise<void> {
-    const member = await this.prisma.member.findUnique({
-      where: { userId_serverId: { userId, serverId } },
-    });
-
-    if (!member || !["OWNER", "ADMIN"].includes(member.role)) {
-      throw new ForbiddenException("Insufficient permissions");
-    }
   }
 
   private generateSlug(name: string): string {

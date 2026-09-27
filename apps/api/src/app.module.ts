@@ -10,6 +10,8 @@ import { ServerModule } from "./server/server.module";
 import { ChannelModule } from "./channel/channel.module";
 import { MessageModule } from "./message/message.module";
 import { DmModule } from "./dm/dm.module";
+import { AuthzModule } from "./authz/authz.module";
+import { MetricsModule } from "./common/metrics/metrics.module";
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { DmModule } from "./dm/dm.module";
       { name: "long", ttl: 60000, limit: 100 },
     ]),
     PrismaModule,
+    AuthzModule,
+    MetricsModule,
     AnalyticsModule,
     AuthModule,
     ServerModule,

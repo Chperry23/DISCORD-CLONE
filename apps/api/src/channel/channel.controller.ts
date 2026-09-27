@@ -21,8 +21,8 @@ export class ChannelController {
   }
 
   @Get()
-  async list(@Param("serverId") serverId: string) {
-    return this.channelService.listForServer(serverId);
+  async list(@Param("serverId") serverId: string, @CurrentUser("id") userId: string) {
+    return this.channelService.listForServer(serverId, userId);
   }
 
   @Patch(":channelId")

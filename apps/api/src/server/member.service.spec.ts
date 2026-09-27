@@ -7,6 +7,7 @@ import {
 import { MemberService } from "./member.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
+import { AuthzService } from "../authz/authz.service";
 
 const mockUser = {
   id: "user-1",
@@ -27,6 +28,7 @@ const mockPrisma = {
 };
 
 const mockAnalytics = { track: jest.fn() };
+const mockAuthz = { assertCanKick: jest.fn() };
 
 describe("MemberService", () => {
   let service: MemberService;
@@ -37,6 +39,7 @@ describe("MemberService", () => {
         MemberService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AnalyticsService, useValue: mockAnalytics },
+        { provide: AuthzService, useValue: mockAuthz },
       ],
     }).compile();
 
@@ -87,10 +90,9 @@ describe("MemberService", () => {
 
   describe("kick", () => {
     it("should throw ForbiddenException when kicking higher role", async () => {
-      mockPrisma.server.findUnique.mockResolvedValue({ id: "server-1" });
-      mockPrisma.member.findUnique
-        .mockResolvedValueOnce({ role: "MODERATOR" })
-        .mockResolvedValueOnce({ role: "ADMIN" });
+      mockAuthz.assertCanKick.mockRejectedValue(
+        new ForbiddenException("Cannot kick a member with equal or higher role"),
+      );
 
       await expect(
         service.kick("server-1", "target-user", "actor-user"),

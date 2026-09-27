@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
+import { AuthzService } from "../authz/authz.service";
 import type { CreateChannelDto, UpdateChannelDto, ChannelResponse } from "@discord-clone/shared";
 
 @Injectable()
@@ -8,10 +9,11 @@ export class ChannelService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly analytics: AnalyticsService,
+    private readonly authz: AuthzService,
   ) {}
 
   async create(serverId: string, dto: CreateChannelDto, userId: string): Promise<ChannelResponse> {
-    await this.assertMemberRole(serverId, userId, ["OWNER", "ADMIN"]);
+    await this.authz.assertMemberRole(serverId, userId, ["OWNER", "ADMIN"]);
 
     const maxPos = await this.prisma.channel.aggregate({
       where: { serverId },
@@ -37,7 +39,8 @@ export class ChannelService {
     return this.toResponse(channel);
   }
 
-  async listForServer(serverId: string): Promise<ChannelResponse[]> {
+  async listForServer(serverId: string, userId: string): Promise<ChannelResponse[]> {
+    await this.authz.assertMembership(serverId, userId);
     const channels = await this.prisma.channel.findMany({
       where: { serverId },
       orderBy: [{ type: "asc" }, { position: "asc" }],
@@ -59,7 +62,7 @@ export class ChannelService {
     const channel = await this.prisma.channel.findUnique({ where: { id: channelId } });
     if (!channel) throw new NotFoundException("Channel not found");
 
-    await this.assertMemberRole(channel.serverId, userId, ["OWNER", "ADMIN"]);
+    await this.authz.assertMemberRole(channel.serverId, userId, ["OWNER", "ADMIN"]);
 
     const updated = await this.prisma.channel.update({
       where: { id: channelId },
@@ -76,17 +79,8 @@ export class ChannelService {
     const channel = await this.prisma.channel.findUnique({ where: { id: channelId } });
     if (!channel) throw new NotFoundException("Channel not found");
 
-    await this.assertMemberRole(channel.serverId, userId, ["OWNER", "ADMIN"]);
+    await this.authz.assertMemberRole(channel.serverId, userId, ["OWNER", "ADMIN"]);
     await this.prisma.channel.delete({ where: { id: channelId } });
-  }
-
-  private async assertMemberRole(serverId: string, userId: string, roles: string[]) {
-    const member = await this.prisma.member.findUnique({
-      where: { userId_serverId: { userId, serverId } },
-    });
-    if (!member || !roles.includes(member.role)) {
-      throw new ForbiddenException("Insufficient permissions");
-    }
   }
 
   private toResponse(channel: {

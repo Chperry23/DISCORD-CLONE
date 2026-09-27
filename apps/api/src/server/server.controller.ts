@@ -8,7 +8,6 @@ import {
   Param,
   Query,
   UseGuards,
-  UsePipes,
 } from "@nestjs/common";
 import { ServerService } from "./server.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -49,8 +48,8 @@ export class ServerController {
   }
 
   @Get(":id")
-  async findOne(@Param("id") id: string) {
-    return this.serverService.findById(id);
+  async findOne(@Param("id") id: string, @CurrentUser("id") userId: string) {
+    return this.serverService.findById(id, userId);
   }
 
   @Patch(":id")

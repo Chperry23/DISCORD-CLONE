@@ -12,6 +12,7 @@ import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
 import { SessionService } from "./session.service";
+import { MetricsService } from "../common/metrics/metrics.service";
 import type {
   RegisterDto,
   LoginDto,
@@ -30,6 +31,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly sessions: SessionService,
     private readonly analytics: AnalyticsService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async register(
@@ -75,34 +77,36 @@ export class AuthService {
     dto: LoginDto,
     meta: { userAgent?: string; ip?: string } = {},
   ): Promise<AuthResponse> {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    return this.metrics.trackOperation("auth_login", async () => {
+      const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
 
-    if (!user) {
-      this.analytics.track("login_failed", { payload: { reason: "user_not_found" } });
-      throw new UnauthorizedException("Invalid credentials");
-    }
+      if (!user) {
+        this.analytics.track("login_failed", { payload: { reason: "user_not_found" } });
+        throw new UnauthorizedException("Invalid credentials");
+      }
 
-    const valid = await argon2.verify(user.password, dto.password);
-    if (!valid) {
-      this.analytics.track("login_failed", {
-        userId: user.id,
-        payload: { reason: "invalid_password" },
+      const valid = await argon2.verify(user.password, dto.password);
+      if (!valid) {
+        this.analytics.track("login_failed", {
+          userId: user.id,
+          payload: { reason: "invalid_password" },
+        });
+        throw new UnauthorizedException("Invalid credentials");
+      }
+
+      const tokens = await this.generateTokens(user.id);
+      await this.sessions.create(user.id, tokens.refreshToken, {
+        userAgent: meta.userAgent,
+        ip: meta.ip,
       });
-      throw new UnauthorizedException("Invalid credentials");
-    }
 
-    const tokens = await this.generateTokens(user.id);
-    await this.sessions.create(user.id, tokens.refreshToken, {
-      userAgent: meta.userAgent,
-      ip: meta.ip,
+      this.analytics.track("user_logged_in", {
+        userId: user.id,
+        payload: { method: "email" },
+      });
+
+      return { user: this.toUserResponse(user), tokens };
     });
-
-    this.analytics.track("user_logged_in", {
-      userId: user.id,
-      payload: { method: "email" },
-    });
-
-    return { user: this.toUserResponse(user), tokens };
   }
 
   async refresh(refreshToken: string): Promise<AuthTokens> {

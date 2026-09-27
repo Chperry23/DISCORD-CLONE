@@ -11,6 +11,7 @@ services:
       POSTGRES_USER: discord
       POSTGRES_PASSWORD: discord_dev_pw
       POSTGRES_DB: discord_clone
+    # Prisma migrate dev uses a shadow DB; CREATEDB is required for the app user.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

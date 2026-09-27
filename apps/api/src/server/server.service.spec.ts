@@ -3,6 +3,7 @@ import { ConflictException, NotFoundException, ForbiddenException } from "@nestj
 import { ServerService } from "./server.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
+import { AuthzService } from "../authz/authz.service";
 
 const mockPrisma = {
   server: {
@@ -23,6 +24,11 @@ const mockPrisma = {
 
 const mockAnalytics = { track: jest.fn() };
 
+const mockAuthz = {
+  assertServerReadable: jest.fn(),
+  assertMemberRole: jest.fn(),
+};
+
 describe("ServerService", () => {
   let service: ServerService;
 
@@ -32,6 +38,7 @@ describe("ServerService", () => {
         ServerService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AnalyticsService, useValue: mockAnalytics },
+        { provide: AuthzService, useValue: mockAuthz },
       ],
     }).compile();
 
@@ -79,7 +86,11 @@ describe("ServerService", () => {
   });
 
   describe("findById", () => {
-    it("should return a server by id", async () => {
+    it("should return a server by id when readable", async () => {
+      mockAuthz.assertServerReadable.mockResolvedValue({
+        server: { id: "server-1", visibility: "PRIVATE" },
+        member: { role: "MEMBER" },
+      });
       mockPrisma.server.findUnique.mockResolvedValue({
         id: "server-1",
         name: "Test",
@@ -93,14 +104,18 @@ describe("ServerService", () => {
         _count: { members: 5 },
       });
 
-      const result = await service.findById("server-1");
+      const result = await service.findById("server-1", "user-1");
       expect(result.id).toBe("server-1");
       expect(result.memberCount).toBe(5);
     });
 
-    it("should throw NotFoundException for missing server", async () => {
-      mockPrisma.server.findUnique.mockResolvedValue(null);
-      await expect(service.findById("nonexistent")).rejects.toThrow(NotFoundException);
+    it("should propagate authz denial for private servers", async () => {
+      mockAuthz.assertServerReadable.mockRejectedValue(
+        new ForbiddenException("This server is private"),
+      );
+      await expect(service.findById("server-1", "outsider")).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 

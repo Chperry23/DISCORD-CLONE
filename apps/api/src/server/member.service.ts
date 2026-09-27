@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
+import { AuthzService } from "../authz/authz.service";
 import type { MemberResponse } from "@discord-clone/shared";
 
 @Injectable()
@@ -13,6 +14,7 @@ export class MemberService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly analytics: AnalyticsService,
+    private readonly authz: AuthzService,
   ) {}
 
   async listMembers(serverId: string): Promise<MemberResponse[]> {
@@ -114,26 +116,7 @@ export class MemberService {
   }
 
   async kick(serverId: string, targetUserId: string, actorUserId: string): Promise<void> {
-    const server = await this.prisma.server.findUnique({ where: { id: serverId } });
-    if (!server) throw new NotFoundException("Server not found");
-
-    const actor = await this.prisma.member.findUnique({
-      where: { userId_serverId: { userId: actorUserId, serverId } },
-    });
-    if (!actor || !["OWNER", "ADMIN", "MODERATOR"].includes(actor.role)) {
-      throw new ForbiddenException("Insufficient permissions to kick members");
-    }
-
-    const target = await this.prisma.member.findUnique({
-      where: { userId_serverId: { userId: targetUserId, serverId } },
-    });
-    if (!target) throw new NotFoundException("Target user is not a member");
-
-    const roleHierarchy: Record<string, number> = { OWNER: 0, ADMIN: 1, MODERATOR: 2, MEMBER: 3 };
-    if ((roleHierarchy[actor.role] ?? 99) >= (roleHierarchy[target.role] ?? 99)) {
-      throw new ForbiddenException("Cannot kick a member with equal or higher role");
-    }
-
+    const { target } = await this.authz.assertCanKick(serverId, actorUserId, targetUserId);
     await this.prisma.member.delete({ where: { id: target.id } });
   }
 

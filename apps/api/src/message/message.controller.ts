@@ -23,10 +23,16 @@ export class MessageController {
   @Get()
   async list(
     @Param("channelId") channelId: string,
+    @CurrentUser("id") userId: string,
     @Query("cursor") cursor?: string,
     @Query("take") take?: string,
   ) {
-    return this.messageService.list(channelId, cursor, take ? parseInt(take, 10) : 50);
+    return this.messageService.list(
+      channelId,
+      userId,
+      cursor,
+      take ? parseInt(take, 10) : 50,
+    );
   }
 
   @Patch(":messageId")

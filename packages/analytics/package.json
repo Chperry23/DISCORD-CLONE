@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint \"src/**/*.ts\"",
     "test": "vitest run"
   },
   "dependencies": {

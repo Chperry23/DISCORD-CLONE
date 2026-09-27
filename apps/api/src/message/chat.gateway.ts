@@ -12,6 +12,8 @@ import { JwtService } from "@nestjs/jwt";
 import type { Server, Socket } from "socket.io";
 import { MessageService } from "./message.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { AuthzService } from "../authz/authz.service";
+import { MetricsService } from "../common/metrics/metrics.service";
 
 interface VoiceUser {
   userId: string;
@@ -38,10 +40,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly jwtService: JwtService,
     private readonly messageService: MessageService,
     private readonly prisma: PrismaService,
+    private readonly authz: AuthzService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async handleConnection(client: Socket) {
-    try {
+    await this.metrics.trackOperation("socket_connect", async () => {
       const token =
         (client.handshake.auth as Record<string, string>)?.token ||
         client.handshake.headers?.authorization?.replace("Bearer ", "");
@@ -69,9 +73,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
       this.userToSocket.set(user.id, client.id);
       this.logger.log(`Connected: ${user.username}`);
-    } catch {
-      client.disconnect();
-    }
+    });
   }
 
   handleDisconnect(client: Socket) {
@@ -123,7 +125,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const userId = this.getUserId(client);
     if (!userId) return;
-    await client.join(`channel:${data.channelId}`);
+
+    try {
+      await this.authz.assertChannelSocketJoin(data.channelId, userId);
+      await client.join(`channel:${data.channelId}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Cannot join channel";
+      client.emit("error", { message: msg });
+    }
   }
 
   @SubscribeMessage("channel:leave")
@@ -217,6 +226,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const info = this.userMap.get(client.id);
     if (!info) return;
+
+    try {
+      await this.authz.assertVoiceJoin(data.channelId, info.userId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Cannot join voice channel";
+      client.emit("error", { message: msg });
+      return;
+    }
 
     this.removeFromAllVoiceChannels(client, info.userId);
 

@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
+import { AuthzService } from "../authz/authz.service";
+import { MetricsService } from "../common/metrics/metrics.service";
 import type { MessageResponse, MessagePage } from "@discord-clone/shared";
 
 @Injectable()
@@ -8,39 +10,39 @@ export class MessageService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly analytics: AnalyticsService,
+    private readonly authz: AuthzService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async send(channelId: string, authorId: string, content: string): Promise<MessageResponse> {
-    const channel = await this.prisma.channel.findUnique({
-      where: { id: channelId },
-      select: { id: true, serverId: true },
-    });
-    if (!channel) throw new NotFoundException("Channel not found");
+    return this.metrics.trackOperation(
+      "message_send",
+      async () => {
+        const channel = await this.authz.assertChannelReadable(channelId, authorId);
 
-    const member = await this.prisma.member.findUnique({
-      where: { userId_serverId: { userId: authorId, serverId: channel.serverId } },
-    });
-    if (!member) throw new ForbiddenException("You must be a member to send messages");
+        const message = await this.prisma.message.create({
+          data: { channelId, authorId, content },
+          include: {
+            author: {
+              select: { id: true, username: true, displayName: true, avatarUrl: true },
+            },
+          },
+        });
 
-    const message = await this.prisma.message.create({
-      data: { channelId, authorId, content },
-      include: {
-        author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true },
-        },
+        this.analytics.track("message_sent", {
+          userId: authorId,
+          serverId: channel.serverId,
+          payload: { channelId, messageId: message.id },
+        });
+
+        return this.toResponse(message);
       },
-    });
-
-    this.analytics.track("message_sent", {
-      userId: authorId,
-      serverId: channel.serverId,
-      payload: { channelId, messageId: message.id },
-    });
-
-    return this.toResponse(message);
+      { userId: authorId },
+    );
   }
 
-  async list(channelId: string, cursor?: string, take = 50): Promise<MessagePage> {
+  async list(channelId: string, userId: string, cursor?: string, take = 50): Promise<MessagePage> {
+    await this.authz.assertChannelReadable(channelId, userId);
     const messages = await this.prisma.message.findMany({
       where: { channelId, deleted: false },
       include: {

@@ -190,7 +190,7 @@ export class WebRTCManager {
     }
   };
 
-  private handlePeerJoined = (data: { userId: string; username: string; displayName: string | null }) => {
+  private handlePeerJoined = (_data: { userId: string; username: string; displayName: string | null }) => {
     // New peer joined - they will send us an offer, we wait
   };
 

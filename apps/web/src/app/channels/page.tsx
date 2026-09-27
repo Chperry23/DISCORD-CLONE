@@ -22,7 +22,7 @@ export default function ChannelsHome() {
   const [activeConvo, setActiveConvo] = useState<DmConversation | null>(null);
   const [messages, setMessages] = useState<DmMessage[]>([]);
   const [input, setInput] = useState("");
-  const [user, setUser] = useState<UserResponse | null>(null);
+  const [_user, setUser] = useState<UserResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

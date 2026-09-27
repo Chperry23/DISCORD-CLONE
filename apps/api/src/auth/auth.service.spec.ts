@@ -7,6 +7,7 @@ import { AuthService } from "./auth.service";
 import { SessionService } from "./session.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
+import { MetricsService } from "../common/metrics/metrics.service";
 
 const mockPrisma = {
   user: {
@@ -48,6 +49,10 @@ const mockAnalytics = {
   track: jest.fn(),
 };
 
+const mockMetrics = {
+  trackOperation: jest.fn((_op: string, fn: () => Promise<unknown>) => fn()),
+};
+
 describe("AuthService", () => {
   let service: AuthService;
 
@@ -60,6 +65,7 @@ describe("AuthService", () => {
         { provide: ConfigService, useValue: mockConfig },
         { provide: SessionService, useValue: mockSessions },
         { provide: AnalyticsService, useValue: mockAnalytics },
+        { provide: MetricsService, useValue: mockMetrics },
       ],
     }).compile();
 

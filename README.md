@@ -34,10 +34,14 @@ pnpm install
 
 ### 3. Setup Database
 
+Ensure `DATABASE_URL` in `.env` matches [`.env.example`](.env.example) (PostgreSQL via Docker Compose).
+
 ```bash
-pnpm db:migrate
+pnpm db:migrate   # applies Prisma migrations to Postgres
 pnpm db:seed
 ```
+
+For local `pnpm db:migrate`, the DB user needs permission to create a Prisma shadow database (Docker `discord` user is configured in compose; for custom Postgres, grant `CREATEDB`).
 
 ### 4. Run Dev
 
