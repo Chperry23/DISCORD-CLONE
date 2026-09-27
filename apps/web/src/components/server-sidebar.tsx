@@ -85,7 +85,9 @@ export function ServerSidebar({
 
       {/* Action buttons */}
       <button
+        type="button"
         onClick={onCreateServer}
+        aria-label="Create Server"
         className="group relative flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-700 text-green-400 transition-all duration-200 hover:rounded-xl hover:bg-green-500 hover:text-white"
       >
         <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

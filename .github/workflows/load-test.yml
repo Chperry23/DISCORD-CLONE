@@ -1,0 +1,40 @@
+name: Load test (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      vus:
+        description: Virtual users
+        required: false
+        default: "5"
+      duration:
+        description: Test duration
+        required: false
+        default: "30s"
+
+jobs:
+  k6-smoke:
+    runs-on: ubuntu-latest
+    if: ${{ vars.ENABLE_LOAD_TESTS == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Run socket load stub
+        env:
+          AUTH_TOKEN: ${{ secrets.LOAD_TEST_AUTH_TOKEN }}
+          CHANNEL_ID: ${{ secrets.LOAD_TEST_CHANNEL_ID }}
+          BASE_URL: ${{ vars.LOAD_TEST_BASE_URL }}
+        run: |
+          if [ -z "$AUTH_TOKEN" ] || [ -z "$CHANNEL_ID" ]; then
+            echo "Skipping: set repository secrets LOAD_TEST_AUTH_TOKEN and LOAD_TEST_CHANNEL_ID (and optional LOAD_TEST_BASE_URL var)."
+            exit 0
+          fi
+          k6 run --vus "${{ inputs.vus }}" --duration "${{ inputs.duration }}" infra/load-tests/socket-messaging.js

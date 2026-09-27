@@ -34,3 +34,14 @@ npm-debug.log*
 # misc
 .cache/
 coverage/
+
+# PWA generated assets (next-pwa)
+apps/web/public/sw.js
+apps/web/public/sw.js.map
+apps/web/public/workbox-*.js
+apps/web/public/workbox-*.js.map
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

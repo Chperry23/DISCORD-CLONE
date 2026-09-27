@@ -7,6 +7,7 @@
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "test": "turbo run test",
+    "test:e2e": "pnpm --filter @discord-clone/web test:e2e",
     "clean": "turbo run clean && rm -rf node_modules",
     "db:generate": "pnpm --filter api exec prisma generate",
     "db:push": "pnpm --filter api exec prisma db push",
