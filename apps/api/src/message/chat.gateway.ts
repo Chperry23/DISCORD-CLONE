@@ -18,6 +18,7 @@ import { MetricsService } from "../common/metrics/metrics.service";
 import { DmService } from "../dm/dm.service";
 import { PresenceService } from "../presence/presence.service";
 import { RealtimeService } from "../realtime/realtime.service";
+import { canRelayRtcSignaling, isVoiceParticipant } from "../voice/voice-session.helpers";
 
 interface VoiceUser {
   userId: string;
@@ -423,6 +424,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     const info = this.userMap.get(client.id);
     if (!info) return;
 
+    if (!isVoiceParticipant(this.voiceChannels, data.channelId, info.userId)) return;
+
     const channel = this.voiceChannels.get(data.channelId);
     if (!channel) return;
 
@@ -440,10 +443,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   }
 
   @SubscribeMessage("voice:get")
-  handleVoiceGet(
+  async handleVoiceGet(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { channelId: string },
   ) {
+    const userId = this.getUserId(client);
+    if (!userId) return;
+
+    try {
+      await this.authz.assertChannelReadable(data.channelId, userId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Cannot read voice state";
+      client.emit("error", { message: msg });
+      return;
+    }
+
     client.emit("voice:state", {
       channelId: data.channelId,
       users: this.getVoiceUsers(data.channelId),
@@ -459,6 +473,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   ) {
     const info = this.userMap.get(client.id);
     if (!info) return;
+
+    if (
+      !canRelayRtcSignaling(this.voiceChannels, data.channelId, info.userId, data.targetUserId)
+    ) {
+      return;
+    }
 
     const targetSocketId = this.userToSocket.get(data.targetUserId);
     if (!targetSocketId) return;
@@ -478,6 +498,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     const info = this.userMap.get(client.id);
     if (!info) return;
 
+    if (
+      !canRelayRtcSignaling(this.voiceChannels, data.channelId, info.userId, data.targetUserId)
+    ) {
+      return;
+    }
+
     const targetSocketId = this.userToSocket.get(data.targetUserId);
     if (!targetSocketId) return;
 
@@ -495,6 +521,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   ) {
     const info = this.userMap.get(client.id);
     if (!info) return;
+
+    if (
+      !canRelayRtcSignaling(this.voiceChannels, data.channelId, info.userId, data.targetUserId)
+    ) {
+      return;
+    }
 
     const targetSocketId = this.userToSocket.get(data.targetUserId);
     if (!targetSocketId) return;
@@ -514,6 +546,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     const info = this.userMap.get(client.id);
     if (!info) return;
 
+    if (!isVoiceParticipant(this.voiceChannels, data.channelId, info.userId)) return;
+
     client.to(`voice:${data.channelId}`).emit("rtc:screen-share-started", {
       userId: info.userId,
     });
@@ -526,6 +560,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   ) {
     const info = this.userMap.get(client.id);
     if (!info) return;
+
+    if (!isVoiceParticipant(this.voiceChannels, data.channelId, info.userId)) return;
 
     client.to(`voice:${data.channelId}`).emit("rtc:screen-share-stopped", {
       userId: info.userId,

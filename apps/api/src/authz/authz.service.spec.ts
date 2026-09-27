@@ -90,5 +90,28 @@ describe("AuthzService", () => {
 
       await expect(service.assertVoiceJoin("c1", "u1")).rejects.toThrow(ForbiddenException);
     });
+
+    it("allows server members on voice channels", async () => {
+      mockPrisma.channel.findUnique.mockResolvedValue({
+        id: "c1",
+        serverId: "s1",
+        type: "VOICE",
+      });
+      mockPrisma.member.findUnique.mockResolvedValue({ role: "MEMBER" });
+
+      const channel = await service.assertVoiceJoin("c1", "u1");
+      expect(channel.type).toBe("VOICE");
+    });
+
+    it("denies non-members", async () => {
+      mockPrisma.channel.findUnique.mockResolvedValue({
+        id: "c1",
+        serverId: "s1",
+        type: "VOICE",
+      });
+      mockPrisma.member.findUnique.mockResolvedValue(null);
+
+      await expect(service.assertVoiceJoin("c1", "u1")).rejects.toThrow(ForbiddenException);
+    });
   });
 });
