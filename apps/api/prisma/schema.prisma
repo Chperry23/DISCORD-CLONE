@@ -38,6 +38,8 @@ model User {
   moderationActions   ModerationAuditEvent[]   @relation("ModerationActor")
   moderationTargets   ModerationAuditEvent[]   @relation("ModerationTarget")
   dataExportJobs      UserDataExportJob[]
+  billingCustomer     BillingCustomer?
+  entitlements        Entitlement[]
 
   @@index([email])
   @@index([username])
@@ -111,6 +113,7 @@ model Server {
   channels Channel[]
   bans     ServerBan[]
   moderationAuditEvents ModerationAuditEvent[]
+  entitlements          Entitlement[]
 
   @@index([ownerId])
   @@index([slug])
@@ -389,4 +392,39 @@ model UserDataExportJob {
 
   @@index([userId, createdAt])
   @@map("user_data_export_jobs")
+}
+
+// ─── Phase 6: Billing (Stripe) — cosmetics only; isolated from chat analytics ─
+
+model BillingCustomer {
+  id               String   @id @default(uuid())
+  userId           String   @unique @map("user_id")
+  stripeCustomerId String   @unique @map("stripe_customer_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("billing_customers")
+}
+
+model Entitlement {
+  id                     String    @id @default(uuid())
+  userId                 String    @map("user_id")
+  kind                   String
+  status                 String    @default("ACTIVE")
+  serverId               String?   @map("server_id")
+  stripeSubscriptionId   String?   @unique @map("stripe_subscription_id")
+  stripeCheckoutSessionId String?  @unique @map("stripe_checkout_session_id")
+  validUntil             DateTime? @map("valid_until")
+  lastStripeEventId      String?   @map("last_stripe_event_id")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  server Server? @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind, status])
+  @@index([serverId, kind, status])
+  @@map("entitlements")
 }

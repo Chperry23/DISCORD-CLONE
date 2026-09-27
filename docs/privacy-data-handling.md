@@ -47,6 +47,10 @@ Object storage blobs for attachments may require a separate lifecycle job in pro
 
 `moderation_audit_events` is **append-only** via the API (no update/delete endpoints). Events store action types (`BAN`, `UNBAN`, `KICK`, `ROLE_CHANGE`, …) and small JSON metadata (roles, reason-present flags). **Message content is not stored** in the audit log unless a future report-resolution flow explicitly allows it.
 
+## Optional billing (Stripe)
+
+When enabled, **server boosts** and **profile badges** are optional cosmetics; core chat remains free. Card data stays with Stripe. We store a Stripe customer id link and entitlement rows only. Billing data is kept out of `analytics_events` and is never sold. See deployment notes in `docs/monetization-privacy.md`.
+
 ## Contact
 
 For data requests beyond self-service export/delete, contact your server operator or platform administrator.

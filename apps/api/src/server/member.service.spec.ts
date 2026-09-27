@@ -11,6 +11,7 @@ import { AuthzService } from "../authz/authz.service";
 import { PresenceService } from "../presence/presence.service";
 import { BanService } from "../moderation/ban.service";
 import { ModerationAuditService } from "../moderation/moderation-audit.service";
+import { EntitlementService } from "../billing/entitlement.service";
 
 const mockUser = {
   id: "user-1",
@@ -35,6 +36,9 @@ const mockAuthz = { assertCanKick: jest.fn(), assertMemberRole: jest.fn() };
 const mockPresence = { getStatuses: jest.fn() };
 const mockBans = { assertNotBanned: jest.fn().mockResolvedValue(undefined) };
 const mockAudit = { record: jest.fn().mockResolvedValue(undefined) };
+const mockEntitlements = {
+  profileBadgeUserIds: jest.fn().mockResolvedValue(new Set<string>()),
+};
 
 describe("MemberService", () => {
   let service: MemberService;
@@ -49,6 +53,7 @@ describe("MemberService", () => {
         { provide: PresenceService, useValue: mockPresence },
         { provide: BanService, useValue: mockBans },
         { provide: ModerationAuditService, useValue: mockAudit },
+        { provide: EntitlementService, useValue: mockEntitlements },
       ],
     }).compile();
 

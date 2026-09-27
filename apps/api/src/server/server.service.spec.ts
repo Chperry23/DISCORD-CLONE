@@ -4,6 +4,7 @@ import { ServerService } from "./server.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
 import { AuthzService } from "../authz/authz.service";
+import { EntitlementService } from "../billing/entitlement.service";
 
 const mockPrisma = {
   server: {
@@ -29,6 +30,11 @@ const mockAuthz = {
   assertMemberRole: jest.fn(),
 };
 
+const mockEntitlements = {
+  hasActiveServerBoost: jest.fn().mockResolvedValue(false),
+  boostedServerIds: jest.fn().mockResolvedValue(new Set()),
+};
+
 describe("ServerService", () => {
   let service: ServerService;
 
@@ -39,6 +45,7 @@ describe("ServerService", () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AnalyticsService, useValue: mockAnalytics },
         { provide: AuthzService, useValue: mockAuthz },
+        { provide: EntitlementService, useValue: mockEntitlements },
       ],
     }).compile();
 

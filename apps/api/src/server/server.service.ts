@@ -8,6 +8,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
 import { AuthzService } from "../authz/authz.service";
 import type { CreateServerDto, UpdateServerDto, ServerResponse } from "@discord-clone/shared";
+import { EntitlementService } from "../billing/entitlement.service";
 
 @Injectable()
 export class ServerService {
@@ -15,6 +16,7 @@ export class ServerService {
     private readonly prisma: PrismaService,
     private readonly analytics: AnalyticsService,
     private readonly authz: AuthzService,
+    private readonly entitlements: EntitlementService,
   ) {}
 
   async create(dto: CreateServerDto, userId: string): Promise<ServerResponse> {
@@ -58,7 +60,8 @@ export class ServerService {
       include: { _count: { select: { members: true } } },
     });
     if (!withCount) throw new NotFoundException("Server not found");
-    return this.toResponse(withCount, withCount._count.members);
+    const boostActive = await this.entitlements.hasActiveServerBoost(serverId);
+    return this.toResponse(withCount, withCount._count.members, boostActive);
   }
 
   async findBySlug(slug: string): Promise<ServerResponse> {
@@ -68,7 +71,8 @@ export class ServerService {
     });
 
     if (!server) throw new NotFoundException("Server not found");
-    return this.toResponse(server, server._count.members);
+    const boostActive = await this.entitlements.hasActiveServerBoost(server.id);
+    return this.toResponse(server, server._count.members, boostActive);
   }
 
   async listForUser(userId: string): Promise<ServerResponse[]> {
@@ -82,7 +86,13 @@ export class ServerService {
       orderBy: { joinedAt: "asc" },
     });
 
-    return memberships.map((m) => this.toResponse(m.server, m.server._count.members));
+    const boosted = await this.entitlements.boostedServerIds(
+      memberships.map((m) => m.server.id),
+    );
+
+    return memberships.map((m) =>
+      this.toResponse(m.server, m.server._count.members, boosted.has(m.server.id)),
+    );
   }
 
   async listPublic(
@@ -100,9 +110,10 @@ export class ServerService {
     const hasMore = servers.length > take;
     const results = hasMore ? servers.slice(0, take) : servers;
     const nextCursor = hasMore ? results[results.length - 1]!.id : null;
+    const boosted = await this.entitlements.boostedServerIds(results.map((s) => s.id));
 
     return {
-      servers: results.map((s) => this.toResponse(s, s._count.members)),
+      servers: results.map((s) => this.toResponse(s, s._count.members, boosted.has(s.id))),
       nextCursor,
     };
   }
@@ -123,7 +134,8 @@ export class ServerService {
       include: { _count: { select: { members: true } } },
     });
 
-    return this.toResponse(updated, updated._count.members);
+    const boostActive = await this.entitlements.hasActiveServerBoost(serverId);
+    return this.toResponse(updated, updated._count.members, boostActive);
   }
 
   async delete(serverId: string, userId: string): Promise<void> {
@@ -196,6 +208,7 @@ export class ServerService {
       createdAt: Date;
     },
     memberCount: number,
+    boostActive = false,
   ): ServerResponse {
     return {
       id: server.id,
@@ -208,6 +221,7 @@ export class ServerService {
       visibility: server.visibility as "PUBLIC" | "PRIVATE",
       memberCount,
       createdAt: server.createdAt.toISOString(),
+      boostActive,
     };
   }
 }

@@ -280,6 +280,7 @@ export default function ServerPage() {
       {profileMember && (
         <UserProfileCard
           member={profileMember.member}
+          viewerUserId={user?.id}
           position={profileMember.pos}
           onClose={() => setProfileMember(null)}
           onMessage={handleMessageMember}
@@ -290,6 +291,7 @@ export default function ServerPage() {
         <ServerSettingsModal
           serverId={serverId}
           members={members}
+          boostActive={server?.boostActive}
           onClose={() => setShowSettings(false)}
           onUpdated={setMembers}
         />
