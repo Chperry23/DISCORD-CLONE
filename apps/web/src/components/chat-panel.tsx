@@ -3,20 +3,48 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getMessages } from "@/lib/messages";
 import { getSocket } from "@/lib/socket";
+import { uploadAttachmentFile } from "@/lib/attachments";
+import { toggleReaction, createThread, pinMessage, unpinMessage } from "@/lib/message-features";
 import type { MessageResponse, UserResponse } from "@discord-clone/shared";
+import { parseMentionUsernames } from "@discord-clone/shared";
+
+const API_ROOT = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api").replace(
+  /\/api\/?$/,
+  "",
+);
 
 interface Props {
   channelId: string;
   user: UserResponse | null;
+  canModerate?: boolean;
+  onOpenThread?: (threadChannelId: string) => void;
 }
 
-export function ChatPanel({ channelId, user }: Props) {
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉"];
+
+function renderContent(content: string) {
+  const parts = content.split(/(@[a-zA-Z0-9_]{2,32})/g);
+  return parts.map((part, i) =>
+    part.startsWith("@") ? (
+      <span key={i} className="rounded bg-brand-500/20 px-0.5 text-brand-300">
+        {part}
+      </span>
+    ) : (
+      <span key={i}>{part}</span>
+    ),
+  );
+}
+
+export function ChatPanel({ channelId, user, canModerate, onOpenThread }: Props) {
   const [messages, setMessages] = useState<MessageResponse[]>([]);
   const [input, setInput] = useState("");
+  const [pendingAttachmentIds, setPendingAttachmentIds] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -39,6 +67,7 @@ export function ChatPanel({ channelId, user }: Props) {
     }
 
     load();
+    setPendingAttachmentIds([]);
 
     const socket = getSocket();
 
@@ -58,6 +87,11 @@ export function ChatPanel({ channelId, user }: Props) {
       setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
     }
 
+    function onThreadCreated(data: { threadChannelId: string; parentChannelId: string }) {
+      if (data.parentChannelId !== channelId) return;
+      void load();
+    }
+
     function onTypingStart(data: { userId: string; username: string }) {
       if (data.userId === user?.id) return;
       setTypingUsers((prev) => new Map(prev).set(data.userId, data.username));
@@ -74,6 +108,7 @@ export function ChatPanel({ channelId, user }: Props) {
     socket.on("message:new", onNewMessage);
     socket.on("message:update", onUpdateMessage);
     socket.on("message:delete", onDeleteMessage);
+    socket.on("thread:created", onThreadCreated);
     socket.on("typing:start", onTypingStart);
     socket.on("typing:stop", onTypingStop);
 
@@ -83,6 +118,7 @@ export function ChatPanel({ channelId, user }: Props) {
       socket.off("message:new", onNewMessage);
       socket.off("message:update", onUpdateMessage);
       socket.off("message:delete", onDeleteMessage);
+      socket.off("thread:created", onThreadCreated);
       socket.off("typing:start", onTypingStart);
       socket.off("typing:stop", onTypingStop);
     };
@@ -90,12 +126,62 @@ export function ChatPanel({ channelId, user }: Props) {
 
   function handleSend() {
     const content = input.trim();
-    if (!content) return;
+    if (!content && pendingAttachmentIds.length === 0) return;
 
     const socket = getSocket();
-    socket.emit("message:send", { channelId, content });
+    socket.emit("message:send", {
+      channelId,
+      content: content || " ",
+      attachmentIds: pendingAttachmentIds.length ? pendingAttachmentIds : undefined,
+    });
     socket.emit("typing:stop", { channelId });
     setInput("");
+    setPendingAttachmentIds([]);
+  }
+
+  async function handleFileSelect(files: FileList | null) {
+    if (!files?.length) return;
+    setUploading(true);
+    try {
+      const ids: string[] = [];
+      for (const file of Array.from(files).slice(0, 5)) {
+        ids.push(await uploadAttachmentFile(channelId, file));
+      }
+      setPendingAttachmentIds((prev) => [...prev, ...ids]);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleReaction(messageId: string, emoji: string) {
+    try {
+      const updated = await toggleReaction(channelId, messageId, emoji);
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? updated : m)));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function handleCreateThread(messageId: string) {
+    try {
+      const thread = await createThread(channelId, messageId);
+      onOpenThread?.(thread.threadChannelId);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function handleTogglePin(messageId: string, pinned: boolean) {
+    if (!canModerate) return;
+    try {
+      const updated = pinned
+        ? await unpinMessage(channelId, messageId)
+        : await pinMessage(channelId, messageId);
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? updated : m)));
+    } catch {
+      /* ignore */
+    }
   }
 
   function handleInputChange(value: string) {
@@ -130,7 +216,6 @@ export function ChatPanel({ channelId, user }: Props) {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
@@ -176,15 +261,108 @@ export function ChatPanel({ channelId, user }: Props) {
 
                 <div className="min-w-0 flex-1">
                   {showHeader && (
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex items-baseline gap-2 flex-wrap">
                       <span className="font-semibold text-sm text-white hover:underline cursor-pointer">
                         {msg.author.displayName ?? msg.author.username}
                       </span>
                       <span className="text-[11px] text-surface-500">{formatTime(msg.createdAt)}</span>
                       {msg.editedAt && <span className="text-[10px] text-surface-600">(edited)</span>}
+                      {msg.pinned && <span className="text-[10px] text-amber-400">📌 pinned</span>}
                     </div>
                   )}
-                  <p className="text-sm text-surface-200 break-words whitespace-pre-wrap">{msg.content}</p>
+                  <p className="text-sm text-surface-200 break-words whitespace-pre-wrap">
+                    {renderContent(msg.content)}
+                  </p>
+
+                  {msg.attachments.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {msg.attachments.map((a) => (
+                        <li key={a.id}>
+                          <a
+                            className="text-sm text-brand-400 hover:underline"
+                            href={`${API_ROOT}${a.downloadUrl}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              const token = localStorage.getItem("accessToken");
+                              fetch(`${API_ROOT}${a.downloadUrl}`, {
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                              })
+                                .then((r) => r.blob())
+                                .then((blob) => {
+                                  const url = URL.createObjectURL(blob);
+                                  const link = document.createElement("a");
+                                  link.href = url;
+                                  link.download = a.filename;
+                                  link.click();
+                                  URL.revokeObjectURL(url);
+                                });
+                            }}
+                          >
+                            📎 {a.filename}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {msg.reactions.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {msg.reactions.map((r) => (
+                        <button
+                          key={r.emoji}
+                          type="button"
+                          onClick={() => handleReaction(msg.id, r.emoji)}
+                          className={`rounded-full border px-2 py-0.5 text-xs ${
+                            r.reactedByMe
+                              ? "border-brand-500 bg-brand-500/20"
+                              : "border-surface-600 bg-surface-800/50"
+                          }`}
+                        >
+                          {r.emoji} {r.count}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-1 hidden gap-1 group-hover:flex">
+                    {QUICK_REACTIONS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        className="rounded px-1 text-sm hover:bg-surface-700"
+                        onClick={() => handleReaction(msg.id, emoji)}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                    {canModerate && (
+                      <button
+                        type="button"
+                        className="rounded px-2 text-[11px] text-surface-400 hover:bg-surface-700"
+                        onClick={() => void handleTogglePin(msg.id, msg.pinned)}
+                      >
+                        {msg.pinned ? "Unpin" : "Pin"}
+                      </button>
+                    )}
+                    {!msg.threadChannelId && (
+                      <button
+                        type="button"
+                        className="rounded px-2 text-[11px] text-surface-400 hover:bg-surface-700"
+                        onClick={() => handleCreateThread(msg.id)}
+                      >
+                        Thread
+                      </button>
+                    )}
+                    {msg.threadChannelId && onOpenThread && (
+                      <button
+                        type="button"
+                        className="rounded px-2 text-[11px] text-brand-400 hover:bg-surface-700"
+                        onClick={() => onOpenThread(msg.threadChannelId!)}
+                      >
+                        Open thread
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -193,7 +371,6 @@ export function ChatPanel({ channelId, user }: Props) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Typing indicator */}
       {typingArray.length > 0 && (
         <div className="px-4 py-1 text-xs text-surface-400">
           <span className="font-semibold">{typingArray.join(", ")}</span>
@@ -201,13 +378,33 @@ export function ChatPanel({ channelId, user }: Props) {
         </div>
       )}
 
-      {/* Input */}
       <div className="shrink-0 px-4 pb-6 pt-2">
+        {pendingAttachmentIds.length > 0 && (
+          <div className="mb-2 text-xs text-surface-400">
+            {pendingAttachmentIds.length} file(s) ready to send
+          </div>
+        )}
         <div className="flex items-center gap-2 rounded-lg border border-surface-600 bg-surface-800 px-4 py-2.5">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            multiple
+            onChange={(e) => void handleFileSelect(e.target.files)}
+          />
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="text-surface-400 hover:text-white disabled:opacity-40"
+            title="Attach file"
+          >
+            📎
+          </button>
           <input
             type="text"
             className="flex-1 bg-transparent text-sm text-white placeholder-surface-400 outline-none"
-            placeholder="Send a message..."
+            placeholder="Send a message... (@username to mention)"
             value={input}
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={(e) => {
@@ -219,12 +416,17 @@ export function ChatPanel({ channelId, user }: Props) {
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim()}
+            disabled={(!input.trim() && pendingAttachmentIds.length === 0) || uploading}
             className="rounded-md bg-brand-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-600 disabled:opacity-30"
           >
             Send
           </button>
         </div>
+        {input && parseMentionUsernames(input).length > 0 && (
+          <p className="mt-1 text-[10px] text-surface-500">
+            Will notify: {parseMentionUsernames(input).map((u) => `@${u}`).join(", ")}
+          </p>
+        )}
       </div>
     </div>
   );

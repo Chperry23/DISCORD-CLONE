@@ -7,3 +7,8 @@ export * from "./message";
 export * from "./profile";
 export * from "./friends";
 export * from "./users";
+export * from "./mentions";
+export * from "./attachment";
+export * from "./reaction";
+export * from "./notification";
+export * from "./thread";

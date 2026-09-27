@@ -29,6 +29,10 @@ model User {
   directMessages      DirectMessage[]
   friendshipsA        Friendship[]      @relation("FriendA")
   friendshipsB        Friendship[]      @relation("FriendB")
+  messageAttachments  MessageAttachment[]
+  messageReactions    MessageReaction[]
+  pinnedMessages      PinnedMessage[]   @relation("PinnedBy")
+  notifications       InAppNotification[]
 
   @@index([email])
   @@index([username])
@@ -144,19 +148,27 @@ model Invite {
 // ─── Phase 3: Channels ──────────────────────────────────────────────
 
 model Channel {
-  id        String   @id @default(uuid())
-  serverId  String   @map("server_id")
-  name      String
-  topic     String?
-  type      String   @default("TEXT")
-  position  Int      @default(0)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  serverId        String   @map("server_id")
+  name            String
+  topic           String?
+  type            String   @default("TEXT")
+  position        Int      @default(0)
+  parentMessageId String?  @unique @map("parent_message_id")
+  parentChannelId String?  @map("parent_channel_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  server   Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  messages Message[]
+  server              Server              @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  messages            Message[]
+  attachments         MessageAttachment[]
+  pinnedMessages      PinnedMessage[]
+  parentMessage       Message?            @relation("ThreadChannel", fields: [parentMessageId], references: [id], onDelete: Cascade)
+  parentChannel       Channel?            @relation("ThreadParent", fields: [parentChannelId], references: [id], onDelete: Cascade)
+  childThreadChannels Channel[]           @relation("ThreadParent")
 
   @@index([serverId])
+  @@index([parentChannelId])
   @@map("channels")
 }
 
@@ -171,12 +183,87 @@ model Message {
   deleted   Boolean   @default(false)
   createdAt DateTime  @default(now()) @map("created_at")
 
-  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  channel         Channel              @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author          User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  attachments     MessageAttachment[]
+  reactions       MessageReaction[]
+  pin             PinnedMessage?
+  threadChannel   Channel?             @relation("ThreadChannel")
 
   @@index([channelId, createdAt])
   @@index([authorId])
   @@map("messages")
+}
+
+model MessageAttachment {
+  id         String   @id @default(uuid())
+  messageId  String?  @map("message_id")
+  channelId  String   @map("channel_id")
+  uploaderId String   @map("uploader_id")
+  storageKey String   @map("storage_key")
+  filename   String
+  mimeType   String   @map("mime_type")
+  sizeBytes  Int      @map("size_bytes")
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  message  Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  channel  Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  uploader User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([channelId, uploaderId])
+  @@map("message_attachments")
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  emoji     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("message_reactions")
+}
+
+model PinnedMessage {
+  id         String   @id @default(uuid())
+  channelId  String   @map("channel_id")
+  messageId  String   @unique @map("message_id")
+  pinnedById String   @map("pinned_by_id")
+  pinnedAt   DateTime @default(now()) @map("pinned_at")
+
+  channel  Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  message  Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  pinnedBy User    @relation("PinnedBy", fields: [pinnedById], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, messageId])
+  @@index([channelId])
+  @@map("pinned_messages")
+}
+
+model InAppNotification {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  type      String
+  serverId  String?   @map("server_id")
+  channelId String?   @map("channel_id")
+  messageId String?   @map("message_id")
+  actorId   String?   @map("actor_id")
+  summary   String
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("in_app_notifications")
 }
 
 // ─── Phase 5: Direct Messages ────────────────────────────────────────

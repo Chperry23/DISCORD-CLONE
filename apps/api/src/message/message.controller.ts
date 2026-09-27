@@ -17,7 +17,7 @@ export class MessageController {
     @Body(new ZodValidationPipe(sendMessageSchema)) dto: SendMessageDto,
     @CurrentUser("id") userId: string,
   ) {
-    return this.messageService.send(channelId, userId, dto.content);
+    return this.messageService.send(channelId, userId, dto);
   }
 
   @Get()

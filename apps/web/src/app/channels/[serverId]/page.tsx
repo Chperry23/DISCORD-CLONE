@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { getServer, getMembers, getMemberPresence, createInvite, leaveServer } from "@/lib/servers";
 import { getSocket } from "@/lib/socket";
 import { createConversation } from "@/lib/dm";
-import { getChannels, createChannel, deleteChannel } from "@/lib/channels";
+import { getChannels, getChannel, createChannel, deleteChannel } from "@/lib/channels";
 import { getMe } from "@/lib/auth";
 import type {
   ServerResponse,
@@ -120,6 +120,18 @@ export default function ServerPage() {
     router.push(`/channels?conversation=${convo.id}`);
   }
 
+  async function handleOpenThread(threadChannelId: string) {
+    try {
+      const threadChannel = await getChannel(threadChannelId);
+      setChannels((prev) =>
+        prev.some((c) => c.id === threadChannel.id) ? prev : [...prev, threadChannel],
+      );
+      setActiveChannelId(threadChannelId);
+    } catch {
+      /* ignore */
+    }
+  }
+
   if (loading || !server) {
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -163,7 +175,9 @@ export default function ServerPage() {
         {/* Channel header */}
         <header className="flex h-12 shrink-0 items-center justify-between border-b border-surface-700/50 px-4">
           <div className="flex items-center gap-2">
-            {activeChannel?.type === "VOICE" ? (
+            {activeChannel?.type === "THREAD" ? (
+              <span className="text-surface-400">🧵</span>
+            ) : activeChannel?.type === "VOICE" ? (
               <svg className="h-5 w-5 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
               </svg>
@@ -195,8 +209,13 @@ export default function ServerPage() {
 
         {/* Main content area */}
         <div className="flex flex-1 overflow-hidden">
-          {activeChannel && activeChannel.type === "TEXT" ? (
-            <ChatPanel channelId={activeChannel.id} user={user} />
+          {activeChannel && (activeChannel.type === "TEXT" || activeChannel.type === "THREAD") ? (
+            <ChatPanel
+              channelId={activeChannel.id}
+              user={user}
+              canModerate={isAdmin}
+              onOpenThread={handleOpenThread}
+            />
           ) : activeChannel?.type === "VOICE" ? (
             <VoicePanel channelId={activeChannel.id} channelName={activeChannel.name} user={user} />
           ) : (

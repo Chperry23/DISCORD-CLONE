@@ -5,6 +5,10 @@ export async function getChannels(serverId: string): Promise<ChannelResponse[]> 
   return api.get<ChannelResponse[]>(`/servers/${serverId}/channels`);
 }
 
+export async function getChannel(channelId: string): Promise<ChannelResponse> {
+  return api.get<ChannelResponse>(`/channels/${channelId}`);
+}
+
 export async function createChannel(
   serverId: string,
   data: CreateChannelDto,
