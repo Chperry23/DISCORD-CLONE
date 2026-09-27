@@ -6,6 +6,7 @@ interface Props {
   member: MemberResponse;
   position?: { x: number; y: number };
   onClose: () => void;
+  onMessage?: (userId: string) => void;
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -26,7 +27,7 @@ function getAvatarColor(userId: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]!;
 }
 
-export function UserProfileCard({ member, position, onClose }: Props) {
+export function UserProfileCard({ member, position, onClose, onMessage }: Props) {
   const style = position
     ? { top: Math.min(position.y, window.innerHeight - 350), left: Math.min(position.x + 10, window.innerWidth - 310) }
     : {};
@@ -73,15 +74,16 @@ export function UserProfileCard({ member, position, onClose }: Props) {
           </div>
 
           <div className="mt-3">
-            <input
-              className="input-field text-sm"
-              placeholder={`Message @${member.user.username}`}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  onClose();
-                }
+            <button
+              type="button"
+              className="btn-secondary w-full text-sm"
+              onClick={() => {
+                onMessage?.(member.userId);
+                onClose();
               }}
-            />
+            >
+              Message @{member.user.username}
+            </button>
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { canKickMember, roleRank } from "./roles";
+import { canAssignMemberRole, canKickMember, roleRank } from "./roles";
 
 describe("@nexus/authz roles", () => {
   it("ranks OWNER above MEMBER", () => {
@@ -15,5 +15,13 @@ describe("@nexus/authz roles", () => {
 
   it("denies MEMBER kicking anyone", () => {
     expect(canKickMember("MEMBER", "MEMBER")).toBe(false);
+  });
+
+  it("allows OWNER to demote ADMIN", () => {
+    expect(canAssignMemberRole("OWNER", "ADMIN", "MEMBER")).toBe(true);
+  });
+
+  it("denies ADMIN promoting to ADMIN", () => {
+    expect(canAssignMemberRole("ADMIN", "MEMBER", "ADMIN")).toBe(false);
   });
 });

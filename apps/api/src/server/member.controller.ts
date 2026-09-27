@@ -12,8 +12,8 @@ import { MemberService } from "./member.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
-import { updateNicknameSchema } from "@discord-clone/shared";
-import type { UpdateNicknameDto } from "@discord-clone/shared";
+import { updateMemberRoleSchema, updateNicknameSchema } from "@discord-clone/shared";
+import type { UpdateMemberRoleDto, UpdateNicknameDto } from "@discord-clone/shared";
 
 @Controller("servers/:serverId/members")
 @UseGuards(JwtAuthGuard)
@@ -23,6 +23,14 @@ export class MemberController {
   @Get()
   async list(@Param("serverId") serverId: string) {
     return this.memberService.listMembers(serverId);
+  }
+
+  @Get("presence")
+  async presence(
+    @Param("serverId") serverId: string,
+    @CurrentUser("id") userId: string,
+  ) {
+    return this.memberService.getPresenceMapForMember(serverId, userId);
   }
 
   @Get("me")
@@ -51,6 +59,16 @@ export class MemberController {
     @CurrentUser("id") userId: string,
   ) {
     return this.memberService.updateNickname(serverId, userId, dto.nickname ?? null);
+  }
+
+  @Patch(":userId/role")
+  async updateRole(
+    @Param("serverId") serverId: string,
+    @Param("userId") targetUserId: string,
+    @Body(new ZodValidationPipe(updateMemberRoleSchema)) dto: UpdateMemberRoleDto,
+    @CurrentUser("id") actorUserId: string,
+  ) {
+    return this.memberService.updateRole(serverId, targetUserId, actorUserId, dto.role);
   }
 
   @Delete(":userId")

@@ -4,6 +4,7 @@ import {
   SubscribeMessage,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   ConnectedSocket,
   MessageBody,
 } from "@nestjs/websockets";
@@ -14,6 +15,9 @@ import { MessageService } from "./message.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuthzService } from "../authz/authz.service";
 import { MetricsService } from "../common/metrics/metrics.service";
+import { DmService } from "../dm/dm.service";
+import { PresenceService } from "../presence/presence.service";
+import { RealtimeService } from "../realtime/realtime.service";
 
 interface VoiceUser {
   userId: string;
@@ -29,7 +33,7 @@ interface VoiceUser {
   cors: { origin: "*" },
   namespace: "/chat",
 })
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
   @WebSocketServer() server!: Server;
   private readonly logger = new Logger(ChatGateway.name);
   private userMap = new Map<string, { userId: string; username: string; displayName: string | null }>();
@@ -42,7 +46,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly prisma: PrismaService,
     private readonly authz: AuthzService,
     private readonly metrics: MetricsService,
+    private readonly dmService: DmService,
+    private readonly presence: PresenceService,
+    private readonly realtime: RealtimeService,
   ) {}
+
+  afterInit(server: Server) {
+    this.realtime.attachServer(server);
+  }
+
+  private async broadcastPresence(userId: string, status: "online" | "offline") {
+    const memberships = await this.prisma.member.findMany({
+      where: { userId },
+      select: { serverId: true },
+    });
+    for (const m of memberships) {
+      this.realtime.emitPresenceForServer(m.serverId, { userId, status });
+    }
+  }
 
   async handleConnection(client: Socket) {
     await this.metrics.trackOperation("socket_connect", async () => {
@@ -72,6 +93,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         displayName: user.displayName,
       });
       this.userToSocket.set(user.id, client.id);
+      await this.presence.setOnline(user.id);
+      await this.broadcastPresence(user.id, "online");
       this.logger.log(`Connected: ${user.username}`);
     });
   }
@@ -83,6 +106,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.removeFromAllVoiceChannels(client, info.userId);
       this.userToSocket.delete(info.userId);
       this.userMap.delete(client.id);
+      void this.presence.setOffline(info.userId).then(() =>
+        this.broadcastPresence(info.userId, "offline"),
+      );
     }
   }
 
@@ -205,6 +231,77 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       userId,
       username: this.getUsername(client),
     });
+  }
+
+  // ── Direct messages ────────────────────────────────
+
+  @SubscribeMessage("dm:join")
+  async handleDmJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { conversationId: string },
+  ) {
+    const userId = this.getUserId(client);
+    if (!userId) return;
+
+    const participant = await this.prisma.dmParticipant.findFirst({
+      where: { conversationId: data.conversationId, userId },
+    });
+    if (!participant) {
+      client.emit("error", { message: "Not a participant" });
+      return;
+    }
+
+    await client.join(`dm:${data.conversationId}`);
+  }
+
+  @SubscribeMessage("dm:leave")
+  async handleDmLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { conversationId: string },
+  ) {
+    await client.leave(`dm:${data.conversationId}`);
+  }
+
+  @SubscribeMessage("dm:send")
+  async handleDmSend(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { conversationId: string; content: string },
+  ) {
+    const userId = this.getUserId(client);
+    if (!userId) return;
+
+    try {
+      await this.dmService.sendMessage(data.conversationId, userId, data.content);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to send DM";
+      client.emit("error", { message: msg });
+    }
+  }
+
+  // ── Presence ───────────────────────────────────────
+
+  @SubscribeMessage("presence:watch")
+  async handlePresenceWatch(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { serverId: string },
+  ) {
+    const userId = this.getUserId(client);
+    if (!userId) return;
+
+    try {
+      await this.authz.assertMembership(data.serverId, userId);
+      await client.join(`server:${data.serverId}:presence`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Cannot watch presence";
+      client.emit("error", { message: msg });
+    }
+  }
+
+  @SubscribeMessage("presence:heartbeat")
+  async handlePresenceHeartbeat(@ConnectedSocket() client: Socket) {
+    const userId = this.getUserId(client);
+    if (!userId) return;
+    await this.presence.refresh(userId);
   }
 
   @SubscribeMessage("typing:stop")

@@ -1,5 +1,7 @@
 import {
   Injectable,
+  Inject,
+  Optional,
   ConflictException,
   UnauthorizedException,
   BadRequestException,
@@ -13,6 +15,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
 import { SessionService } from "./session.service";
 import { MetricsService } from "../common/metrics/metrics.service";
+import { MAILER, type Mailer } from "./mailer/mailer.interface";
 import type {
   RegisterDto,
   LoginDto,
@@ -32,6 +35,7 @@ export class AuthService {
     private readonly sessions: SessionService,
     private readonly analytics: AnalyticsService,
     private readonly metrics: MetricsService,
+    @Optional() @Inject(MAILER) private readonly mailer?: Mailer,
   ) {}
 
   async register(
@@ -145,8 +149,17 @@ export class AuthService {
       data: { userId: user.id, token, expiresAt },
     });
 
-    // In production: send email with token
-    this.logger.log(`Password reset token for ${email}: ${token}`);
+    const frontend = this.config.get<string>("FRONTEND_URL", "http://localhost:3000");
+    const resetUrl = `${frontend}/auth/forgot-password?token=${encodeURIComponent(token)}`;
+    const nodeEnv = this.config.get<string>("NODE_ENV", "development");
+
+    if (this.mailer) {
+      await this.mailer.sendPasswordReset({ email, resetUrl });
+    } else if (nodeEnv !== "production") {
+      this.logger.log(`[dev] password reset link for ${email}: ${resetUrl}`);
+    } else {
+      this.logger.warn(`Password reset mailer not configured for ${email}`);
+    }
 
     return { message: "If that email exists, a reset link has been sent." };
   }

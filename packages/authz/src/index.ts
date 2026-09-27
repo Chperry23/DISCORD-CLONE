@@ -6,5 +6,6 @@ export {
   roleRank,
   canKickMember,
   canModerate,
+  canAssignMemberRole,
   type MemberRole,
 } from "./roles";

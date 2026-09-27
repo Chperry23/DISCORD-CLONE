@@ -8,6 +8,7 @@ import { MemberService } from "./member.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
 import { AuthzService } from "../authz/authz.service";
+import { PresenceService } from "../presence/presence.service";
 
 const mockUser = {
   id: "user-1",
@@ -28,7 +29,8 @@ const mockPrisma = {
 };
 
 const mockAnalytics = { track: jest.fn() };
-const mockAuthz = { assertCanKick: jest.fn() };
+const mockAuthz = { assertCanKick: jest.fn(), assertMemberRole: jest.fn() };
+const mockPresence = { getStatuses: jest.fn() };
 
 describe("MemberService", () => {
   let service: MemberService;
@@ -40,6 +42,7 @@ describe("MemberService", () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AnalyticsService, useValue: mockAnalytics },
         { provide: AuthzService, useValue: mockAuthz },
+        { provide: PresenceService, useValue: mockPresence },
       ],
     }).compile();
 
@@ -85,6 +88,23 @@ describe("MemberService", () => {
       mockPrisma.server.findUnique.mockResolvedValue({ id: "server-1", ownerId: "user-1" });
 
       await expect(service.leave("server-1", "user-1")).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe("updateRole", () => {
+    it("denies ADMIN promoting member to ADMIN", async () => {
+      mockPrisma.server.findUnique.mockResolvedValue({ id: "server-1", ownerId: "owner" });
+      mockAuthz.assertMemberRole.mockResolvedValue({ role: "ADMIN" });
+      mockPrisma.member.findUnique.mockResolvedValue({
+        id: "m1",
+        userId: "target",
+        serverId: "server-1",
+        role: "MEMBER",
+      });
+
+      await expect(
+        service.updateRole("server-1", "target", "admin-user", "ADMIN"),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 

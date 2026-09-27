@@ -5,3 +5,5 @@ export * from "./server";
 export * from "./channel";
 export * from "./message";
 export * from "./profile";
+export * from "./friends";
+export * from "./users";

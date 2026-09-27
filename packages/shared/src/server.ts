@@ -24,6 +24,10 @@ export const updateNicknameSchema = z.object({
   nickname: z.string().min(1).max(64).optional().nullable(),
 });
 
+export const updateMemberRoleSchema = z.object({
+  role: z.enum(["ADMIN", "MODERATOR", "MEMBER"]),
+});
+
 export const transferOwnershipSchema = z.object({
   newOwnerId: z.string().uuid("Invalid user ID"),
 });
@@ -32,6 +36,7 @@ export type CreateServerDto = z.infer<typeof createServerSchema>;
 export type UpdateServerDto = z.infer<typeof updateServerSchema>;
 export type CreateInviteDto = z.infer<typeof createInviteSchema>;
 export type UpdateNicknameDto = z.infer<typeof updateNicknameSchema>;
+export type UpdateMemberRoleDto = z.infer<typeof updateMemberRoleSchema>;
 export type TransferOwnershipDto = z.infer<typeof transferOwnershipSchema>;
 
 export interface ServerResponse {

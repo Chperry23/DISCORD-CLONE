@@ -6,6 +6,9 @@ import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { SessionService } from "./session.service";
+import { MAILER } from "./mailer/mailer.interface";
+import { DevSinkMailer } from "./mailer/dev-sink.mailer";
+import { NoopMailer } from "./mailer/noop.mailer";
 
 @Module({
   imports: [
@@ -22,7 +25,21 @@ import { SessionService } from "./session.service";
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, SessionService, JwtStrategy],
+  providers: [
+    AuthService,
+    SessionService,
+    JwtStrategy,
+    {
+      provide: MAILER,
+      useFactory: () => {
+        const mode = process.env.PASSWORD_RESET_MAILER ?? "auto";
+        if (mode === "dev-sink") return new DevSinkMailer();
+        if (mode === "noop") return new NoopMailer();
+        if (process.env.NODE_ENV === "production") return new NoopMailer();
+        return new DevSinkMailer();
+      },
+    },
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

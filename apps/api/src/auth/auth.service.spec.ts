@@ -8,6 +8,7 @@ import { SessionService } from "./session.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
 import { MetricsService } from "../common/metrics/metrics.service";
+import { MAILER } from "./mailer/mailer.interface";
 
 const mockPrisma = {
   user: {
@@ -193,6 +194,27 @@ describe("AuthService", () => {
       const result = await service.requestPasswordReset("unknown@example.com");
 
       expect(result.message).toContain("If that email exists");
+    });
+
+    it("uses mailer when configured", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ id: "user-1", email: "a@b.com" });
+      mockPrisma.passwordResetToken.create.mockResolvedValue({});
+      const mailer = { sendPasswordReset: jest.fn() };
+      const module = await Test.createTestingModule({
+        providers: [
+          AuthService,
+          { provide: PrismaService, useValue: mockPrisma },
+          { provide: JwtService, useValue: mockJwt },
+          { provide: ConfigService, useValue: { ...mockConfig, get: (k: string, d?: string) => (k === "NODE_ENV" ? "production" : d) } },
+          { provide: SessionService, useValue: mockSessions },
+          { provide: AnalyticsService, useValue: mockAnalytics },
+          { provide: MetricsService, useValue: mockMetrics },
+          { provide: MAILER, useValue: mailer },
+        ],
+      }).compile();
+      const svc = module.get(AuthService);
+      await svc.requestPasswordReset("a@b.com");
+      expect(mailer.sendPasswordReset).toHaveBeenCalled();
     });
   });
 
