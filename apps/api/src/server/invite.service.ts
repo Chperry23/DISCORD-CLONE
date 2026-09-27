@@ -8,12 +8,14 @@ import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
 import type { CreateInviteDto, InviteResponse, MemberResponse } from "@discord-clone/shared";
+import { BanService } from "../moderation/ban.service";
 
 @Injectable()
 export class InviteService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly analytics: AnalyticsService,
+    private readonly bans: BanService,
   ) {}
 
   async create(
@@ -87,6 +89,8 @@ export class InviteService {
       where: { userId_serverId: { userId, serverId: invite.serverId } },
     });
     if (existing) throw new BadRequestException("You are already a member of this server");
+
+    await this.bans.assertNotBanned(invite.serverId, userId);
 
     const [member] = await this.prisma.$transaction([
       this.prisma.member.create({

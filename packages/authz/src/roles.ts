@@ -30,6 +30,11 @@ export function canKickMember(actorRole: string, targetRole: string): boolean {
   return roleRank(actorRole) < roleRank(targetRole);
 }
 
+/** Same hierarchy as kick; bans are a stronger moderation action. */
+export function canBanMember(actorRole: string, targetRole: string): boolean {
+  return canKickMember(actorRole, targetRole);
+}
+
 export function canModerate(actorRole: string): boolean {
   return hasAnyRole(actorRole, ["OWNER", "ADMIN", "MODERATOR"]);
 }

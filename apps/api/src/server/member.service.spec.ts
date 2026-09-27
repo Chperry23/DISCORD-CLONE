@@ -9,6 +9,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
 import { AuthzService } from "../authz/authz.service";
 import { PresenceService } from "../presence/presence.service";
+import { BanService } from "../moderation/ban.service";
+import { ModerationAuditService } from "../moderation/moderation-audit.service";
 
 const mockUser = {
   id: "user-1",
@@ -31,6 +33,8 @@ const mockPrisma = {
 const mockAnalytics = { track: jest.fn() };
 const mockAuthz = { assertCanKick: jest.fn(), assertMemberRole: jest.fn() };
 const mockPresence = { getStatuses: jest.fn() };
+const mockBans = { assertNotBanned: jest.fn().mockResolvedValue(undefined) };
+const mockAudit = { record: jest.fn().mockResolvedValue(undefined) };
 
 describe("MemberService", () => {
   let service: MemberService;
@@ -43,6 +47,8 @@ describe("MemberService", () => {
         { provide: AnalyticsService, useValue: mockAnalytics },
         { provide: AuthzService, useValue: mockAuthz },
         { provide: PresenceService, useValue: mockPresence },
+        { provide: BanService, useValue: mockBans },
+        { provide: ModerationAuditService, useValue: mockAudit },
       ],
     }).compile();
 

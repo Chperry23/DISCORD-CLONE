@@ -13,3 +13,6 @@ export * from "./reaction";
 export * from "./notification";
 export * from "./thread";
 export * from "./ice";
+export * from "./moderation";
+export * from "./search";
+export * from "./privacy";

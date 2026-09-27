@@ -5,6 +5,7 @@ export {
   hasAnyRole,
   roleRank,
   canKickMember,
+  canBanMember,
   canModerate,
   canAssignMemberRole,
   type MemberRole,

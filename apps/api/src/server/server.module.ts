@@ -6,9 +6,10 @@ import { InviteService } from "./invite.service";
 import { MemberController } from "./member.controller";
 import { MemberService } from "./member.service";
 import { PresenceModule } from "../presence/presence.module";
+import { ModerationModule } from "../moderation/moderation.module";
 
 @Module({
-  imports: [PresenceModule],
+  imports: [PresenceModule, ModerationModule],
   controllers: [ServerController, InviteController, MemberController],
   providers: [ServerService, InviteService, MemberService],
   exports: [ServerService, MemberService],

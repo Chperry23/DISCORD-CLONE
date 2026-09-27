@@ -20,6 +20,8 @@ import { UsersModule } from "./users/users.module";
 import { StorageModule } from "./storage/storage.module";
 import { NotificationModule } from "./notification/notification.module";
 import { VoiceModule } from "./voice/voice.module";
+import { ModerationModule } from "./moderation/moderation.module";
+import { SearchModule } from "./search/search.module";
 
 @Module({
   imports: [
@@ -46,6 +48,8 @@ import { VoiceModule } from "./voice/voice.module";
     StorageModule,
     NotificationModule,
     VoiceModule,
+    ModerationModule,
+    SearchModule,
     HealthModule,
   ],
   providers: [
