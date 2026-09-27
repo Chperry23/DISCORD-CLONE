@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getConversations, getDmMessages, sendDmMessage } from "@/lib/dm";
+import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
+import { getConversations, getDmMessages, createConversation } from "@/lib/dm";
 import { getMe } from "@/lib/auth";
+import { getSocket } from "@/lib/socket";
+import { searchUsers } from "@/lib/users";
+import { FriendsPanel } from "@/components/friends-panel";
 import type { DmConversation, DmMessage } from "@/lib/dm";
-import type { UserResponse } from "@discord-clone/shared";
+import type { UserResponse, UserSearchResult } from "@discord-clone/shared";
 
 const AVATAR_COLORS = [
   "bg-red-500", "bg-orange-500", "bg-amber-500", "bg-emerald-500",
@@ -17,31 +21,121 @@ function getAvatarColor(id: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]!;
 }
 
+type HomeView = "home" | "friends";
+
 export default function ChannelsHome() {
+  const searchParams = useSearchParams();
   const [conversations, setConversations] = useState<DmConversation[]>([]);
   const [activeConvo, setActiveConvo] = useState<DmConversation | null>(null);
   const [messages, setMessages] = useState<DmMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [_user, setUser] = useState<UserResponse | null>(null);
+  const [user, setUser] = useState<UserResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [homeView, setHomeView] = useState<HomeView>("home");
+  const [dmSearch, setDmSearch] = useState("");
+  const [dmSearchResults, setDmSearchResults] = useState<UserSearchResult[]>([]);
+  const [input, setInput] = useState("");
 
-  useEffect(() => {
-    Promise.all([getConversations(), getMe()])
-      .then(([convos, u]) => { setConversations(convos); setUser(u); })
-      .finally(() => setLoading(false));
+  const refreshConversations = useCallback(async () => {
+    const convos = await getConversations();
+    setConversations(convos);
+    setActiveConvo((prev) => {
+      if (!prev) return prev;
+      return convos.find((c) => c.id === prev.id) ?? prev;
+    });
   }, []);
 
-  async function selectConvo(convo: DmConversation) {
+  useEffect(() => {
+    Promise.all([refreshConversations(), getMe()])
+      .then(([, u]) => setUser(u))
+      .finally(() => setLoading(false));
+  }, [refreshConversations]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshConversations().catch(() => undefined);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [refreshConversations]);
+
+  useEffect(() => {
+    if (dmSearch.trim().length < 2) {
+      setDmSearchResults([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      searchUsers(dmSearch.trim()).then(setDmSearchResults).catch(() => setDmSearchResults([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [dmSearch]);
+
+  useEffect(() => {
+    if (!activeConvo) return;
+    const conversationId = activeConvo.id;
+    const socket = getSocket();
+    socket.emit("dm:join", { conversationId });
+
+    function onDmMessage(msg: DmMessage) {
+      if (msg.conversationId !== conversationId) {
+        refreshConversations();
+        return;
+      }
+      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      refreshConversations();
+    }
+
+    socket.on("dm:message:new", onDmMessage);
+    return () => {
+      socket.emit("dm:leave", { conversationId });
+      socket.off("dm:message:new", onDmMessage);
+    };
+  }, [activeConvo, refreshConversations]);
+
+  const selectConvo = useCallback(async (convo: DmConversation) => {
+    setHomeView("home");
     setActiveConvo(convo);
     const result = await getDmMessages(convo.id);
     setMessages(result.messages);
-  }
+  }, []);
+
+  const openConvoById = useCallback(
+    async (conversationId: string) => {
+      setHomeView("home");
+      let convo = conversations.find((c) => c.id === conversationId);
+      if (!convo) {
+        await refreshConversations();
+        const convos = await getConversations();
+        convo = convos.find((c) => c.id === conversationId);
+      }
+      if (convo) await selectConvo(convo);
+    },
+    [conversations, refreshConversations, selectConvo],
+  );
+
+  const startDmWithUser = useCallback(
+    async (targetUserId: string) => {
+      const convo = await createConversation(targetUserId);
+      await refreshConversations();
+      await selectConvo(convo);
+    },
+    [refreshConversations, selectConvo],
+  );
+
+  useEffect(() => {
+    const convoId = searchParams.get("conversation");
+    const dmUser = searchParams.get("dmUser");
+    if (convoId) {
+      openConvoById(convoId).catch(() => undefined);
+    } else if (dmUser) {
+      startDmWithUser(dmUser).catch(() => undefined);
+    }
+  }, [searchParams, openConvoById, startDmWithUser]);
 
   async function handleSend() {
     if (!input.trim() || !activeConvo) return;
-    const msg = await sendDmMessage(activeConvo.id, input.trim());
-    setMessages((prev) => [...prev, msg]);
+    const content = input.trim();
     setInput("");
+    const socket = getSocket();
+    socket.emit("dm:send", { conversationId: activeConvo.id, content });
   }
 
   function formatTime(iso: string) {
@@ -58,17 +152,46 @@ export default function ChannelsHome() {
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      {/* DM sidebar */}
       <div className="flex w-60 shrink-0 flex-col border-r border-surface-700/50 bg-surface-900/60">
         <div className="flex h-12 items-center border-b border-surface-700/50 px-4">
-          <input className="w-full rounded-md bg-surface-800 px-3 py-1 text-sm text-surface-300 placeholder-surface-500 outline-none" placeholder="Find or start a conversation" />
+          <input
+            className="w-full rounded-md bg-surface-800 px-3 py-1 text-sm text-surface-300 placeholder-surface-500 outline-none"
+            placeholder="Find or start a conversation"
+            value={dmSearch}
+            onChange={(e) => setDmSearch(e.target.value)}
+          />
         </div>
+        {dmSearchResults.length > 0 && (
+          <ul className="mx-2 mt-1 max-h-32 overflow-y-auto rounded-md border border-surface-700 bg-surface-900 text-xs">
+            {dmSearchResults.map((u) => (
+              <li key={u.id}>
+                <button
+                  type="button"
+                  className="w-full px-2 py-1.5 text-left hover:bg-surface-800"
+                  onClick={() => {
+                    setDmSearch("");
+                    setDmSearchResults([]);
+                    startDmWithUser(u.id);
+                  }}
+                >
+                  {u.displayName ?? u.username}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <div className="px-2 pt-3">
-          <button className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm font-medium text-surface-300 transition hover:bg-surface-800/50 hover:text-white">
-            <svg className="h-5 w-5 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
+          <button
+            type="button"
+            onClick={() => {
+              setHomeView("friends");
+              setActiveConvo(null);
+            }}
+            className={`flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm font-medium transition ${
+              homeView === "friends" ? "bg-surface-700/80 text-white" : "text-surface-300 hover:bg-surface-800/50 hover:text-white"
+            }`}
+          >
             Friends
           </button>
         </div>
@@ -82,10 +205,11 @@ export default function ChannelsHome() {
           {conversations.map((c) => {
             const r = c.recipient;
             if (!r) return null;
-            const isActive = activeConvo?.id === c.id;
+            const isActive = activeConvo?.id === c.id && homeView === "home";
             return (
               <button
                 key={c.id}
+                type="button"
                 onClick={() => selectConvo(c)}
                 className={`flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition ${
                   isActive ? "bg-surface-700/80 text-white" : "text-surface-300 hover:bg-surface-800/50"
@@ -106,8 +230,9 @@ export default function ChannelsHome() {
         </div>
       </div>
 
-      {/* Chat area */}
-      {activeConvo ? (
+      {homeView === "friends" ? (
+        <FriendsPanel onOpenDm={openConvoById} />
+      ) : activeConvo ? (
         <div className="flex flex-1 flex-col overflow-hidden">
           <header className="flex h-12 shrink-0 items-center gap-3 border-b border-surface-700/50 px-4">
             <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white ${getAvatarColor(activeConvo.recipient?.id ?? "")}`}>
@@ -117,15 +242,6 @@ export default function ChannelsHome() {
           </header>
 
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
-            {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className={`mb-3 flex h-16 w-16 items-center justify-center rounded-full text-3xl font-bold text-white ${getAvatarColor(activeConvo.recipient?.id ?? "")}`}>
-                  {(activeConvo.recipient?.displayName ?? activeConvo.recipient?.username ?? "?")[0]?.toUpperCase()}
-                </div>
-                <h3 className="text-lg font-bold">{activeConvo.recipient?.displayName ?? activeConvo.recipient?.username}</h3>
-                <p className="text-sm text-surface-400">This is the beginning of your direct message history.</p>
-              </div>
-            )}
             {messages.map((msg) => (
               <div key={msg.id} className="group flex gap-3 rounded-md px-2 py-1 hover:bg-surface-800/30">
                 <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${getAvatarColor(msg.author.id)}`}>
@@ -153,6 +269,7 @@ export default function ChannelsHome() {
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               />
               <button
+                type="button"
                 onClick={handleSend}
                 disabled={!input.trim()}
                 className="rounded-md bg-brand-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-600 disabled:opacity-30"
@@ -165,13 +282,11 @@ export default function ChannelsHome() {
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center">
           <div className="text-center max-w-md">
-            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-surface-800 text-4xl">
-              &#127918;
-            </div>
             <h1 className="mb-2 text-2xl font-bold">Welcome to Nexus</h1>
             <p className="text-surface-400">
-              Select a server from the sidebar, start a conversation, or create a new server.
+              Select a server from the sidebar, open Friends, or start a direct message.
             </p>
+            {user && <p className="mt-2 text-xs text-surface-500">Signed in as {user.username}</p>}
           </div>
         </div>
       )}

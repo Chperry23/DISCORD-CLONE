@@ -7,7 +7,10 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsService } from "../analytics/analytics.service";
 import { AuthzService } from "../authz/authz.service";
+import { PresenceService } from "../presence/presence.service";
 import type { MemberResponse } from "@discord-clone/shared";
+import { canAssignMemberRole } from "@nexus/authz";
+import type { MemberRole } from "@nexus/authz";
 
 @Injectable()
 export class MemberService {
@@ -15,7 +18,17 @@ export class MemberService {
     private readonly prisma: PrismaService,
     private readonly analytics: AnalyticsService,
     private readonly authz: AuthzService,
+    private readonly presence: PresenceService,
   ) {}
+
+  async getPresenceMapForMember(serverId: string, viewerId: string): Promise<Record<string, "online" | "offline">> {
+    await this.authz.assertMembership(serverId, viewerId);
+    const members = await this.prisma.member.findMany({
+      where: { serverId },
+      select: { userId: true },
+    });
+    return this.presence.getStatuses(members.map((m) => m.userId));
+  }
 
   async listMembers(serverId: string): Promise<MemberResponse[]> {
     const members = await this.prisma.member.findMany({
@@ -118,6 +131,38 @@ export class MemberService {
   async kick(serverId: string, targetUserId: string, actorUserId: string): Promise<void> {
     const { target } = await this.authz.assertCanKick(serverId, actorUserId, targetUserId);
     await this.prisma.member.delete({ where: { id: target.id } });
+  }
+
+  async updateRole(
+    serverId: string,
+    targetUserId: string,
+    actorUserId: string,
+    role: MemberRole,
+  ): Promise<MemberResponse> {
+    const server = await this.prisma.server.findUnique({ where: { id: serverId } });
+    if (!server) throw new NotFoundException("Server not found");
+
+    const actor = await this.authz.assertMemberRole(serverId, actorUserId, ["OWNER", "ADMIN"]);
+    const target = await this.prisma.member.findUnique({
+      where: { userId_serverId: { userId: targetUserId, serverId } },
+    });
+    if (!target) throw new NotFoundException("Member not found");
+
+    if (!canAssignMemberRole(actor.role, target.role, role)) {
+      throw new ForbiddenException("Cannot assign this role");
+    }
+
+    const updated = await this.prisma.member.update({
+      where: { id: target.id },
+      data: { role },
+      include: {
+        user: {
+          select: { id: true, username: true, displayName: true, avatarUrl: true },
+        },
+      },
+    });
+
+    return this.toResponse(updated);
   }
 
   private toResponse(

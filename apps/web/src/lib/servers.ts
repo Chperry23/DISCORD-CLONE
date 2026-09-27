@@ -32,6 +32,20 @@ export async function getMembers(serverId: string): Promise<MemberResponse[]> {
   return api.get<MemberResponse[]>(`/servers/${serverId}/members`);
 }
 
+export async function getMemberPresence(
+  serverId: string,
+): Promise<Record<string, "online" | "offline">> {
+  return api.get<Record<string, "online" | "offline">>(`/servers/${serverId}/members/presence`);
+}
+
+export async function updateMemberRole(
+  serverId: string,
+  userId: string,
+  role: "ADMIN" | "MODERATOR" | "MEMBER",
+): Promise<MemberResponse> {
+  return api.patch<MemberResponse>(`/servers/${serverId}/members/${userId}/role`, { role });
+}
+
 export async function joinServer(serverId: string): Promise<MemberResponse> {
   return api.post<MemberResponse>(`/servers/${serverId}/members/join`, {});
 }

@@ -12,6 +12,11 @@ import { MessageModule } from "./message/message.module";
 import { DmModule } from "./dm/dm.module";
 import { AuthzModule } from "./authz/authz.module";
 import { MetricsModule } from "./common/metrics/metrics.module";
+import { RedisModule } from "./redis/redis.module";
+import { PresenceModule } from "./presence/presence.module";
+import { RealtimeModule } from "./realtime/realtime.module";
+import { FriendsModule } from "./friends/friends.module";
+import { UsersModule } from "./users/users.module";
 
 @Module({
   imports: [
@@ -22,6 +27,9 @@ import { MetricsModule } from "./common/metrics/metrics.module";
       { name: "long", ttl: 60000, limit: 100 },
     ]),
     PrismaModule,
+    RedisModule,
+    PresenceModule,
+    RealtimeModule,
     AuthzModule,
     MetricsModule,
     AnalyticsModule,
@@ -30,6 +38,8 @@ import { MetricsModule } from "./common/metrics/metrics.module";
     ChannelModule,
     MessageModule,
     DmModule,
+    FriendsModule,
+    UsersModule,
     HealthModule,
   ],
   providers: [

@@ -225,11 +225,12 @@ model DirectMessage {
 }
 
 model Friendship {
-  id        String   @id @default(uuid())
-  userAId   String   @map("user_a_id")
-  userBId   String   @map("user_b_id")
-  status    String   @default("PENDING")
-  createdAt DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  userAId       String   @map("user_a_id")
+  userBId       String   @map("user_b_id")
+  requestedById String?  @map("requested_by_id")
+  status        String   @default("PENDING")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   userA User @relation("FriendA", fields: [userAId], references: [id], onDelete: Cascade)
   userB User @relation("FriendB", fields: [userBId], references: [id], onDelete: Cascade)

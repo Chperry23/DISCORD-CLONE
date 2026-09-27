@@ -33,3 +33,28 @@ export function canKickMember(actorRole: string, targetRole: string): boolean {
 export function canModerate(actorRole: string): boolean {
   return hasAnyRole(actorRole, ["OWNER", "ADMIN", "MODERATOR"]);
 }
+
+const ASSIGNABLE_ROLES: MemberRole[] = ["ADMIN", "MODERATOR", "MEMBER"];
+
+/** OWNER/ADMIN may change another member's role (never to OWNER). */
+export function canAssignMemberRole(
+  actorRole: string,
+  targetRole: string,
+  newRole: string,
+): boolean {
+  if (!isMemberRole(newRole) || newRole === "OWNER") return false;
+  if (!ASSIGNABLE_ROLES.includes(newRole)) return false;
+
+  if (actorRole === "OWNER") {
+    if (targetRole === "OWNER") return false;
+    return true;
+  }
+
+  if (actorRole === "ADMIN") {
+    if (!hasAnyRole(targetRole, ["MODERATOR", "MEMBER"])) return false;
+    if (!hasAnyRole(newRole, ["MODERATOR", "MEMBER"])) return false;
+    return true;
+  }
+
+  return false;
+}

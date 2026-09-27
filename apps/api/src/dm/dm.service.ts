@@ -1,11 +1,26 @@
 import { Injectable, ForbiddenException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
+import { FriendsService } from "../friends/friends.service";
+import { RealtimeService } from "../realtime/realtime.service";
 
 @Injectable()
 export class DmService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly friends: FriendsService,
+    private readonly realtime: RealtimeService,
+    private readonly config: ConfigService,
+  ) {}
 
   async getOrCreateConversation(userId: string, targetUserId: string) {
+    await this.friends.assertCanDirectMessage(userId, targetUserId);
+    if (this.config.get<string>("DM_REQUIRE_FRIENDSHIP", "false") === "true") {
+      const ok = await this.friends.areFriends(userId, targetUserId);
+      if (!ok) {
+        throw new ForbiddenException("You must be friends to start a direct message");
+      }
+    }
     const existing = await this.prisma.dmConversation.findFirst({
       where: {
         AND: [
@@ -90,8 +105,20 @@ export class DmService {
   async sendMessage(conversationId: string, userId: string, content: string) {
     const participant = await this.prisma.dmParticipant.findFirst({
       where: { conversationId, userId },
+      include: {
+        conversation: {
+          include: { participants: { select: { userId: true } } },
+        },
+      },
     });
     if (!participant) throw new ForbiddenException("Not a participant");
+
+    const otherId = participant.conversation.participants
+      .map((p) => p.userId)
+      .find((id) => id !== userId);
+    if (otherId) {
+      await this.friends.assertCanDirectMessage(userId, otherId);
+    }
 
     const message = await this.prisma.directMessage.create({
       data: { conversationId, authorId: userId, content },
@@ -105,7 +132,7 @@ export class DmService {
       data: { updatedAt: new Date() },
     });
 
-    return {
+    const payload = {
       id: message.id,
       conversationId: message.conversationId,
       content: message.content,
@@ -113,6 +140,9 @@ export class DmService {
       createdAt: message.createdAt.toISOString(),
       author: message.author,
     };
+
+    this.realtime.emitDmMessage(conversationId, payload);
+    return payload;
   }
 
   private toConversationResponse(

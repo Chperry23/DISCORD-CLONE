@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getServer, getMembers, createInvite, leaveServer } from "@/lib/servers";
+import { getServer, getMembers, getMemberPresence, createInvite, leaveServer } from "@/lib/servers";
+import { getSocket } from "@/lib/socket";
+import { createConversation } from "@/lib/dm";
 import { getChannels, createChannel, deleteChannel } from "@/lib/channels";
 import { getMe } from "@/lib/auth";
 import type {
@@ -16,6 +18,7 @@ import { ChatPanel } from "@/components/chat-panel";
 import { ChannelSidebar } from "@/components/channel-sidebar";
 import { VoicePanel } from "@/components/voice-panel";
 import { UserProfileCard } from "@/components/user-profile-card";
+import { ServerSettingsModal } from "@/components/server-settings-modal";
 
 export default function ServerPage() {
   const params = useParams();
@@ -31,19 +34,23 @@ export default function ServerPage() {
   const [showMembers, setShowMembers] = useState(true);
   const [loading, setLoading] = useState(true);
   const [profileMember, setProfileMember] = useState<{ member: MemberResponse; pos: { x: number; y: number } } | null>(null);
+  const [presence, setPresence] = useState<Record<string, "online" | "offline">>({});
+  const [showSettings, setShowSettings] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [s, m, c, u] = await Promise.all([
+      const [s, m, c, u, pres] = await Promise.all([
         getServer(serverId),
         getMembers(serverId),
         getChannels(serverId),
         getMe(),
+        getMemberPresence(serverId),
       ]);
       setServer(s);
       setMembers(m);
       setChannels(c);
       setUser(u);
+      setPresence(pres);
 
       const textChannels = c.filter((ch) => ch.type === "TEXT");
       if (textChannels.length > 0 && !activeChannelId) {
@@ -59,6 +66,24 @@ export default function ServerPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const socket = getSocket();
+    socket.emit("presence:watch", { serverId });
+    const heartbeat = setInterval(() => {
+      socket.emit("presence:heartbeat");
+    }, 30000);
+
+    function onPresence(data: { userId: string; status: "online" | "offline" }) {
+      setPresence((prev) => ({ ...prev, [data.userId]: data.status }));
+    }
+
+    socket.on("presence:update", onPresence);
+    return () => {
+      clearInterval(heartbeat);
+      socket.off("presence:update", onPresence);
+    };
+  }, [serverId]);
 
   async function handleCreateChannel(name: string, type: string) {
     const ch = await createChannel(serverId, { name, type: type as "TEXT" | "VOICE" | "ANNOUNCEMENT" });
@@ -88,6 +113,11 @@ export default function ServerPage() {
 
   function handleMemberClick(member: MemberResponse, e: React.MouseEvent) {
     setProfileMember({ member, pos: { x: e.clientX, y: e.clientY } });
+  }
+
+  async function handleMessageMember(targetUserId: string) {
+    const convo = await createConversation(targetUserId);
+    router.push(`/channels?conversation=${convo.id}`);
   }
 
   if (loading || !server) {
@@ -125,6 +155,7 @@ export default function ServerPage() {
         onDeleteChannel={handleDeleteChannel}
         onCreateInvite={handleCreateInvite}
         onLeave={isOwner ? undefined : handleLeave}
+        onOpenSettings={isAdmin ? () => setShowSettings(true) : undefined}
         invite={invite}
       />
 
@@ -201,7 +232,11 @@ export default function ServerPage() {
                             <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${getAvatarColor(member.userId)}`}>
                               {(member.user.displayName ?? member.user.username)[0]?.toUpperCase()}
                             </div>
-                            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-surface-900 bg-green-500" />
+                            <span
+                              className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-surface-900 ${
+                                presence[member.userId] === "online" ? "bg-green-500" : "bg-surface-600"
+                              }`}
+                            />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium">
@@ -228,6 +263,16 @@ export default function ServerPage() {
           member={profileMember.member}
           position={profileMember.pos}
           onClose={() => setProfileMember(null)}
+          onMessage={handleMessageMember}
+        />
+      )}
+
+      {showSettings && isAdmin && (
+        <ServerSettingsModal
+          serverId={serverId}
+          members={members}
+          onClose={() => setShowSettings(false)}
+          onUpdated={setMembers}
         />
       )}
     </div>
