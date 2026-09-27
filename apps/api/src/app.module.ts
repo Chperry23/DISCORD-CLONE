@@ -17,6 +17,8 @@ import { PresenceModule } from "./presence/presence.module";
 import { RealtimeModule } from "./realtime/realtime.module";
 import { FriendsModule } from "./friends/friends.module";
 import { UsersModule } from "./users/users.module";
+import { StorageModule } from "./storage/storage.module";
+import { NotificationModule } from "./notification/notification.module";
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { UsersModule } from "./users/users.module";
     DmModule,
     FriendsModule,
     UsersModule,
+    StorageModule,
+    NotificationModule,
     HealthModule,
   ],
   providers: [

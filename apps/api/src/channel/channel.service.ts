@@ -42,7 +42,7 @@ export class ChannelService {
   async listForServer(serverId: string, userId: string): Promise<ChannelResponse[]> {
     await this.authz.assertMembership(serverId, userId);
     const channels = await this.prisma.channel.findMany({
-      where: { serverId },
+      where: { serverId, type: { not: "THREAD" } },
       orderBy: [{ type: "asc" }, { position: "asc" }],
     });
     return channels.map(this.toResponse);
@@ -51,6 +51,11 @@ export class ChannelService {
   async findById(channelId: string): Promise<ChannelResponse> {
     const channel = await this.prisma.channel.findUnique({ where: { id: channelId } });
     if (!channel) throw new NotFoundException("Channel not found");
+    return this.toResponse(channel);
+  }
+
+  async getForMember(channelId: string, userId: string): Promise<ChannelResponse> {
+    const channel = await this.authz.assertChannelReadable(channelId, userId);
     return this.toResponse(channel);
   }
 
@@ -90,6 +95,8 @@ export class ChannelService {
     topic: string | null;
     type: string;
     position: number;
+    parentMessageId?: string | null;
+    parentChannelId?: string | null;
     createdAt: Date;
   }): ChannelResponse {
     return {
@@ -99,6 +106,8 @@ export class ChannelService {
       topic: channel.topic,
       type: channel.type as ChannelResponse["type"],
       position: channel.position,
+      parentMessageId: channel.parentMessageId ?? null,
+      parentChannelId: channel.parentChannelId ?? null,
       createdAt: channel.createdAt.toISOString(),
     };
   }

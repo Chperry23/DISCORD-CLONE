@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const CHANNEL_TYPES = ["TEXT", "VOICE", "ANNOUNCEMENT"] as const;
+export const CHANNEL_TYPES = ["TEXT", "VOICE", "ANNOUNCEMENT", "THREAD"] as const;
 export type ChannelType = (typeof CHANNEL_TYPES)[number];
 
 export const createChannelSchema = z.object({
@@ -27,5 +27,7 @@ export interface ChannelResponse {
   topic: string | null;
   type: ChannelType;
   position: number;
+  parentMessageId: string | null;
+  parentChannelId: string | null;
   createdAt: string;
 }

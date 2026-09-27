@@ -94,6 +94,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       });
       this.userToSocket.set(user.id, client.id);
       await this.presence.setOnline(user.id);
+      await client.join(`user:${user.id}`);
       await this.broadcastPresence(user.id, "online");
       this.logger.log(`Connected: ${user.username}`);
     });
@@ -172,14 +173,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   @SubscribeMessage("message:send")
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { channelId: string; content: string },
+    @MessageBody()
+    data: { channelId: string; content: string; attachmentIds?: string[] },
   ) {
     const userId = this.getUserId(client);
     if (!userId) return;
 
     try {
-      const message = await this.messageService.send(data.channelId, userId, data.content);
-      this.server.to(`channel:${data.channelId}`).emit("message:new", message);
+      await this.messageService.send(data.channelId, userId, {
+        content: data.content,
+        attachmentIds: data.attachmentIds,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to send message";
       client.emit("error", { message: msg });

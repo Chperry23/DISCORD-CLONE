@@ -9,6 +9,7 @@ import { ServerSidebar } from "@/components/server-sidebar";
 import { CreateServerModal } from "@/components/create-server-modal";
 import { JoinServerModal } from "@/components/join-server-modal";
 import { UserSettingsModal } from "@/components/user-settings-modal";
+import { NotificationsBell } from "@/components/notifications-bell";
 
 export default function ChannelsLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -70,7 +71,12 @@ export default function ChannelsLayout({ children }: { children: React.ReactNode
         onOpenSettings={() => setShowSettings(true)}
       />
 
-      <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
+      <main className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex h-10 shrink-0 items-center justify-end border-b border-surface-800/80 px-3">
+          <NotificationsBell />
+        </div>
+        <div className="flex flex-1 flex-col overflow-hidden">{children}</div>
+      </main>
 
       {showCreate && (
         <CreateServerModal

@@ -16,4 +16,12 @@ export class RealtimeService {
   emitPresenceForServer(serverId: string, payload: { userId: string; status: string }) {
     this.server?.to(`server:${serverId}:presence`).emit("presence:update", payload);
   }
+
+  emitChannelEvent(channelId: string, event: string, payload: unknown) {
+    this.server?.to(`channel:${channelId}`).emit(event, payload);
+  }
+
+  emitUserNotification(userId: string, notification: unknown) {
+    this.server?.to(`user:${userId}`).emit("notification:new", notification);
+  }
 }
