@@ -1,9 +1,15 @@
+import type { IceServerConfig } from "@discord-clone/shared";
 import type { Socket } from "socket.io-client";
 
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:localhost:3478" }];
+
+function toRtcIceServers(servers: IceServerConfig[]): RTCIceServer[] {
+  return servers.map((s) => ({
+    urls: s.urls,
+    ...(s.username ? { username: s.username } : {}),
+    ...(s.credential ? { credential: s.credential } : {}),
+  }));
+}
 
 export interface PeerInfo {
   userId: string;
@@ -26,13 +32,19 @@ export class WebRTCManager {
   private onRemoteStream: OnRemoteStream;
   private onPeerDisconnected: OnPeerDisconnected;
   private destroyed = false;
+  private iceServers: RTCIceServer[];
 
   constructor(
     socket: Socket,
     channelId: string,
     onRemoteStream: OnRemoteStream,
     onPeerDisconnected: OnPeerDisconnected,
+    iceServers?: IceServerConfig[],
   ) {
+    this.iceServers =
+      iceServers && iceServers.length > 0
+        ? toRtcIceServers(iceServers)
+        : FALLBACK_ICE_SERVERS;
     this.socket = socket;
     this.channelId = channelId;
     this.onRemoteStream = onRemoteStream;
@@ -106,7 +118,7 @@ export class WebRTCManager {
   }
 
   private createPeerConnection(userId: string, username: string, displayName: string | null): PeerInfo {
-    const connection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const connection = new RTCPeerConnection({ iceServers: this.iceServers });
 
     const peerInfo: PeerInfo = {
       userId,

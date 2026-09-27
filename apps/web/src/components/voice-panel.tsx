@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { getSocket } from "@/lib/socket";
 import { getMicStream, getAudioLevel } from "@/lib/media";
 import { WebRTCManager } from "@/lib/webrtc";
+import { fetchVoiceIceConfig } from "@/lib/voice";
 import type { UserResponse } from "@discord-clone/shared";
 
 interface VoiceUser {
@@ -117,6 +118,8 @@ export function VoicePanel({ channelId, channelName, user }: Props) {
       micStreamRef.current = stream;
       micLevelRef.current = getAudioLevel(stream);
 
+      const iceConfig = await fetchVoiceIceConfig();
+
       const rtc = new WebRTCManager(
         socket,
         channelId,
@@ -131,6 +134,7 @@ export function VoicePanel({ channelId, channelName, user }: Props) {
           setRemoteAudioStreams((prev) => { const m = new Map(prev); m.delete(userId); return m; });
           setRemoteScreenStreams((prev) => { const m = new Map(prev); m.delete(userId); return m; });
         },
+        iceConfig.iceServers,
       );
 
       rtc.setLocalMicStream(stream);

@@ -19,6 +19,7 @@ import { FriendsModule } from "./friends/friends.module";
 import { UsersModule } from "./users/users.module";
 import { StorageModule } from "./storage/storage.module";
 import { NotificationModule } from "./notification/notification.module";
+import { VoiceModule } from "./voice/voice.module";
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { NotificationModule } from "./notification/notification.module";
     UsersModule,
     StorageModule,
     NotificationModule,
+    VoiceModule,
     HealthModule,
   ],
   providers: [

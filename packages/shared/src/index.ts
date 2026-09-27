@@ -12,3 +12,4 @@ export * from "./attachment";
 export * from "./reaction";
 export * from "./notification";
 export * from "./thread";
+export * from "./ice";

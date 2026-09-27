@@ -26,6 +26,8 @@ A scalable, privacy-first, real-time communication platform built for gamers.
 docker compose -f infra/docker/docker-compose.yml up -d
 ```
 
+This starts **PostgreSQL**, **Redis**, **MinIO** (attachments), and **coturn** (self-hosted STUN/TURN for voice). Voice defaults are in [`.env.example`](.env.example).
+
 ### 2. Install Dependencies
 
 ```bash
@@ -63,7 +65,27 @@ pnpm dev
   /shared     → Types, DTOs, Zod schemas
   /analytics  → Event tracking SDK
 /infra
-  /docker     → Docker Compose for Postgres + Redis
+  /docker     → Docker Compose (Postgres, Redis, MinIO, coturn)
+  /voice      → Mesh vs SFU notes, production TURN guidance
+```
+
+## Voice & WebRTC (Phase 3)
+
+| Mode | When | Media path |
+|------|------|------------|
+| **Mesh (default)** | ≤ 8 users per voice channel | Browser ↔ browser (P2P); TURN relay when NAT blocks direct paths |
+| **SFU (planned)** | Larger channels | Set `VOICE_TOPOLOGY=sfu` — see [`infra/voice/README.md`](infra/voice/README.md) for Livekit/mediasoup migration |
+
+- **Authorization:** `voice:join` requires server membership + voice channel type (`assertVoiceJoin`). `voice:get` requires channel read access. WebRTC signaling is relayed only between users already in the same voice session.
+- **ICE config:** Authenticated clients call `GET /api/voice/ice-servers`. Configure `ICE_STUN_URLS`, `ICE_TURN_URLS`, and TURN credentials — **prefer self-hosted coturn** over public STUN (Google STUN removed from the web client).
+- **Privacy:** Mesh keeps audio off the app server; TURN sees relay metadata only. For strict egress policies, run coturn in your VPC and avoid third-party STUN.
+
+```bash
+# Dev TURN (matches coturn/turnserver.conf)
+ICE_STUN_URLS=stun:localhost:3478
+ICE_TURN_URLS=turn:localhost:3478?transport=udp
+ICE_TURN_USERNAME=discord
+ICE_TURN_CREDENTIAL=discord_turn_dev
 ```
 
 ## API Endpoints (Phase 1)
@@ -139,7 +161,16 @@ pnpm test
 
 ## Environment Variables
 
-See `.env.example` for all required variables.
+See `.env.example` for all required variables (including voice / ICE).
+
+| Variable | Purpose |
+|----------|---------|
+| `ICE_STUN_URLS` | Comma-separated STUN URIs (default local coturn) |
+| `ICE_TURN_URLS` | Comma-separated TURN URIs (production relay) |
+| `ICE_TURN_USERNAME` / `ICE_TURN_CREDENTIAL` | TURN long-term credentials |
+| `ICE_SERVERS_JSON` | Optional full JSON override for ICE servers |
+| `VOICE_TOPOLOGY` | `mesh` (default) or `sfu` (future) |
+| `VOICE_MESH_MAX_PARTICIPANTS` | Recommended mesh limit (default 8) |
 
 ## License
 
