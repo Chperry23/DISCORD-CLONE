@@ -50,6 +50,8 @@ export interface ServerResponse {
   visibility: "PUBLIC" | "PRIVATE";
   memberCount: number;
   createdAt: string;
+  /** Cosmetic server boost (paid entitlement); does not gate chat access. */
+  boostActive?: boolean;
 }
 
 export interface MemberResponse {
@@ -64,6 +66,8 @@ export interface MemberResponse {
     username: string;
     displayName: string | null;
     avatarUrl: string | null;
+    /** Cosmetic profile badge (paid entitlement). */
+    profileBadge?: boolean;
   };
 }
 

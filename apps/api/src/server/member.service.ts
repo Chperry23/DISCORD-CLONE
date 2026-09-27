@@ -13,6 +13,7 @@ import { canAssignMemberRole } from "@nexus/authz";
 import type { MemberRole } from "@nexus/authz";
 import { BanService } from "../moderation/ban.service";
 import { ModerationAuditService } from "../moderation/moderation-audit.service";
+import { EntitlementService } from "../billing/entitlement.service";
 
 @Injectable()
 export class MemberService {
@@ -23,6 +24,7 @@ export class MemberService {
     private readonly presence: PresenceService,
     private readonly bans: BanService,
     private readonly audit: ModerationAuditService,
+    private readonly entitlements: EntitlementService,
   ) {}
 
   async getPresenceMapForMember(serverId: string, viewerId: string): Promise<Record<string, "online" | "offline">> {
@@ -45,7 +47,7 @@ export class MemberService {
       orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
     });
 
-    return members.map(this.toResponse);
+    return this.mapMembers(members);
   }
 
   async getMember(serverId: string, userId: string): Promise<MemberResponse> {
@@ -59,7 +61,8 @@ export class MemberService {
     });
 
     if (!member) throw new NotFoundException("Member not found");
-    return this.toResponse(member);
+    const [mapped] = await this.mapMembers([member]);
+    return mapped!;
   }
 
   async join(serverId: string, userId: string): Promise<MemberResponse> {
@@ -88,7 +91,7 @@ export class MemberService {
       payload: { method: "direct" },
     });
 
-    return this.toResponse(member);
+    return (await this.mapMembers([member]))[0]!;
   }
 
   async leave(serverId: string, userId: string): Promise<void> {
@@ -131,7 +134,7 @@ export class MemberService {
       },
     });
 
-    return this.toResponse(updated);
+    return (await this.mapMembers([updated]))[0]!;
   }
 
   async kick(serverId: string, targetUserId: string, actorUserId: string): Promise<void> {
@@ -182,11 +185,11 @@ export class MemberService {
       metadata: { previousRole: target.role, newRole: role },
     });
 
-    return this.toResponse(updated);
+    return (await this.mapMembers([updated]))[0]!;
   }
 
-  private toResponse(
-    member: {
+  private async mapMembers(
+    members: Array<{
       id: string;
       userId: string;
       serverId: string;
@@ -199,16 +202,22 @@ export class MemberService {
         displayName: string | null;
         avatarUrl: string | null;
       };
-    },
-  ): MemberResponse {
-    return {
+    }>,
+  ): Promise<MemberResponse[]> {
+    const badgeUsers = await this.entitlements.profileBadgeUserIds(
+      members.map((m) => m.userId),
+    );
+    return members.map((member) => ({
       id: member.id,
       userId: member.userId,
       serverId: member.serverId,
       nickname: member.nickname,
       role: member.role as MemberResponse["role"],
       joinedAt: member.joinedAt.toISOString(),
-      user: member.user,
-    };
+      user: {
+        ...member.user,
+        profileBadge: badgeUsers.has(member.userId),
+      },
+    }));
   }
 }

@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import type { MemberResponse } from "@discord-clone/shared";
+import { startProfileBadgeCheckout } from "@/lib/billing";
 
 interface Props {
   member: MemberResponse;
+  viewerUserId?: string | null;
   position?: { x: number; y: number };
   onClose: () => void;
   onMessage?: (userId: string) => void;
@@ -27,7 +30,11 @@ function getAvatarColor(userId: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]!;
 }
 
-export function UserProfileCard({ member, position, onClose, onMessage }: Props) {
+export function UserProfileCard({ member, viewerUserId, position, onClose, onMessage }: Props) {
+  const [badgeBusy, setBadgeBusy] = useState(false);
+  const [badgeMessage, setBadgeMessage] = useState<string | null>(null);
+  const isSelf = viewerUserId != null && viewerUserId === member.userId;
+
   const style = position
     ? { top: Math.min(position.y, window.innerHeight - 350), left: Math.min(position.x + 10, window.innerWidth - 310) }
     : {};
@@ -49,8 +56,16 @@ export function UserProfileCard({ member, position, onClose, onMessage }: Props)
           </div>
 
           <div className="mb-3">
-            <h3 className="text-lg font-bold">
+            <h3 className="text-lg font-bold flex items-center gap-2">
               {member.nickname ?? member.user.displayName ?? member.user.username}
+              {member.user.profileBadge ? (
+                <span
+                  className="rounded bg-violet-500/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-200"
+                  title="Supporter badge"
+                >
+                  Supporter
+                </span>
+              ) : null}
             </h3>
             <p className="text-sm text-surface-400">@{member.user.username}</p>
           </div>
@@ -73,7 +88,33 @@ export function UserProfileCard({ member, position, onClose, onMessage }: Props)
             </p>
           </div>
 
-          <div className="mt-3">
+          <div className="mt-3 space-y-2">
+            {isSelf && !member.user.profileBadge ? (
+              <button
+                type="button"
+                className="btn-primary w-full text-sm"
+                disabled={badgeBusy}
+                onClick={async () => {
+                  setBadgeBusy(true);
+                  setBadgeMessage(null);
+                  try {
+                    const session = await startProfileBadgeCheckout();
+                    if (!session.configured) {
+                      setBadgeMessage("Billing is not configured (see .env.example).");
+                      return;
+                    }
+                    if (session.url) window.location.href = session.url;
+                  } catch (err) {
+                    setBadgeMessage(err instanceof Error ? err.message : "Checkout failed");
+                  } finally {
+                    setBadgeBusy(false);
+                  }
+                }}
+              >
+                {badgeBusy ? "Redirecting…" : "Get profile badge"}
+              </button>
+            ) : null}
+            {badgeMessage ? <p className="text-xs text-amber-300">{badgeMessage}</p> : null}
             <button
               type="button"
               className="btn-secondary w-full text-sm"

@@ -7,9 +7,10 @@ import { MemberController } from "./member.controller";
 import { MemberService } from "./member.service";
 import { PresenceModule } from "../presence/presence.module";
 import { ModerationModule } from "../moderation/moderation.module";
+import { BillingModule } from "../billing/billing.module";
 
 @Module({
-  imports: [PresenceModule, ModerationModule],
+  imports: [PresenceModule, ModerationModule, BillingModule],
   controllers: [ServerController, InviteController, MemberController],
   providers: [ServerService, InviteService, MemberService],
   exports: [ServerService, MemberService],

@@ -22,6 +22,7 @@ import { NotificationModule } from "./notification/notification.module";
 import { VoiceModule } from "./voice/voice.module";
 import { ModerationModule } from "./moderation/moderation.module";
 import { SearchModule } from "./search/search.module";
+import { BillingModule } from "./billing/billing.module";
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { SearchModule } from "./search/search.module";
     VoiceModule,
     ModerationModule,
     SearchModule,
+    BillingModule,
     HealthModule,
   ],
   providers: [
