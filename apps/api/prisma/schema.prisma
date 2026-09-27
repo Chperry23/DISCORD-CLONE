@@ -33,6 +33,11 @@ model User {
   messageReactions    MessageReaction[]
   pinnedMessages      PinnedMessage[]   @relation("PinnedBy")
   notifications       InAppNotification[]
+  serverBansReceived  ServerBan[]              @relation("BannedUser")
+  serverBansIssued    ServerBan[]              @relation("BanIssuer")
+  moderationActions   ModerationAuditEvent[]   @relation("ModerationActor")
+  moderationTargets   ModerationAuditEvent[]   @relation("ModerationTarget")
+  dataExportJobs      UserDataExportJob[]
 
   @@index([email])
   @@index([username])
@@ -104,6 +109,8 @@ model Server {
   members  Member[]
   invites  Invite[]
   channels Channel[]
+  bans     ServerBan[]
+  moderationAuditEvents ModerationAuditEvent[]
 
   @@index([ownerId])
   @@index([slug])
@@ -326,4 +333,60 @@ model Friendship {
   @@index([userAId])
   @@index([userBId])
   @@map("friendships")
+}
+
+// ─── Phase 4 (parity): Moderation, search metadata ───────────────────
+
+model ServerBan {
+  id         String    @id @default(uuid())
+  serverId   String    @map("server_id")
+  userId     String    @map("user_id")
+  bannedById String    @map("banned_by_id")
+  reason     String?
+  expiresAt  DateTime? @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user     User   @relation("BannedUser", fields: [userId], references: [id], onDelete: Cascade)
+  bannedBy User   @relation("BanIssuer", fields: [bannedById], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+  @@index([serverId])
+  @@index([userId])
+  @@map("server_bans")
+}
+
+// Append-only moderation audit trail (no message bodies unless report flow).
+model ModerationAuditEvent {
+  id           String   @id @default(uuid())
+  serverId     String   @map("server_id")
+  actorUserId  String   @map("actor_user_id")
+  action       String
+  targetUserId String?  @map("target_user_id")
+  metadata     String   @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  actor  User   @relation("ModerationActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  target User?  @relation("ModerationTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([serverId, createdAt])
+  @@index([actorUserId])
+  @@map("moderation_audit_events")
+}
+
+model UserDataExportJob {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  status        String    @default("PENDING")
+  downloadToken String?   @unique @map("download_token")
+  payload       String?
+  expiresAt     DateTime? @map("expires_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  completedAt   DateTime? @map("completed_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("user_data_export_jobs")
 }

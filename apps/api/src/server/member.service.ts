@@ -11,6 +11,8 @@ import { PresenceService } from "../presence/presence.service";
 import type { MemberResponse } from "@discord-clone/shared";
 import { canAssignMemberRole } from "@nexus/authz";
 import type { MemberRole } from "@nexus/authz";
+import { BanService } from "../moderation/ban.service";
+import { ModerationAuditService } from "../moderation/moderation-audit.service";
 
 @Injectable()
 export class MemberService {
@@ -19,6 +21,8 @@ export class MemberService {
     private readonly analytics: AnalyticsService,
     private readonly authz: AuthzService,
     private readonly presence: PresenceService,
+    private readonly bans: BanService,
+    private readonly audit: ModerationAuditService,
   ) {}
 
   async getPresenceMapForMember(serverId: string, viewerId: string): Promise<Record<string, "online" | "offline">> {
@@ -61,6 +65,8 @@ export class MemberService {
   async join(serverId: string, userId: string): Promise<MemberResponse> {
     const server = await this.prisma.server.findUnique({ where: { id: serverId } });
     if (!server) throw new NotFoundException("Server not found");
+
+    await this.bans.assertNotBanned(serverId, userId);
 
     const existing = await this.prisma.member.findUnique({
       where: { userId_serverId: { userId, serverId } },
@@ -131,6 +137,12 @@ export class MemberService {
   async kick(serverId: string, targetUserId: string, actorUserId: string): Promise<void> {
     const { target } = await this.authz.assertCanKick(serverId, actorUserId, targetUserId);
     await this.prisma.member.delete({ where: { id: target.id } });
+    await this.audit.record({
+      serverId,
+      actorUserId,
+      action: "KICK",
+      targetUserId,
+    });
   }
 
   async updateRole(
@@ -160,6 +172,14 @@ export class MemberService {
           select: { id: true, username: true, displayName: true, avatarUrl: true },
         },
       },
+    });
+
+    await this.audit.record({
+      serverId,
+      actorUserId,
+      action: "ROLE_CHANGE",
+      targetUserId,
+      metadata: { previousRole: target.role, newRole: role },
     });
 
     return this.toResponse(updated);
