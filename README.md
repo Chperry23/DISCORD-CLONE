@@ -159,6 +159,32 @@ ICE_TURN_CREDENTIAL=discord_turn_dev
 pnpm test
 ```
 
+### E2E (Playwright)
+
+Requires Postgres, Redis, and built API/web (Playwright starts both when you run the suite):
+
+```bash
+docker compose -f infra/docker/docker-compose.yml up -d postgres redis
+pnpm --filter @discord-clone/api exec prisma migrate deploy
+pnpm --filter @discord-clone/api build
+pnpm --filter @discord-clone/web build
+pnpm test:e2e
+```
+
+CI runs the same flow in [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml).
+
+### Load testing (k6)
+
+Optional socket connect/message stub — see [`infra/load-tests/README.md`](infra/load-tests/README.md). Manual workflow: [`.github/workflows/load-test.yml`](.github/workflows/load-test.yml) (requires repo secrets).
+
+## Multi-instance API (Socket.IO)
+
+All API replicas must share `REDIS_URL`. On boot, the API attaches `@socket.io/redis-adapter` so channel/DM/presence rooms fan out across instances. Set `SOCKET_REDIS_ADAPTER=false` only for single-node dev without Redis.
+
+## PWA (installable web)
+
+Production builds register a service worker and ship `manifest.webmanifest` (install prompt, standalone display, offline fallback page at `/offline`). Icons live under `apps/web/public/icons/`.
+
 ## Environment Variables
 
 See `.env.example` for all required variables (including voice / ICE).

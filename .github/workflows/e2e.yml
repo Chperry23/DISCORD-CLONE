@@ -1,13 +1,13 @@
-name: CI
+name: E2E
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  build-test:
+  playwright:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     services:
       postgres:
@@ -23,13 +23,21 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
 
     env:
       DATABASE_URL: postgresql://discord:discord_dev_pw@localhost:5432/discord_clone
       REDIS_URL: redis://localhost:6379
-      SOCKET_REDIS_ADAPTER: "false"
-      JWT_SECRET: ci-test-jwt-secret-at-least-32-characters-long
-      JWT_REFRESH_SECRET: ci-test-refresh-secret-at-least-32-chars
+      JWT_SECRET: ci-e2e-jwt-secret-at-least-32-characters-long
+      JWT_REFRESH_SECRET: ci-e2e-refresh-secret-at-least-32-chars
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
       NODE_ENV: test
@@ -56,16 +64,16 @@ jobs:
       - name: Prisma migrate deploy
         run: pnpm --filter @discord-clone/api exec prisma migrate deploy
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Test
-        run: pnpm test
-
-      - name: Build API
-        run: pnpm --filter @discord-clone/api build
-
-      - name: Build Web
-        run: pnpm --filter @discord-clone/web build
+      - name: Build API and Web
+        run: |
+          pnpm --filter @discord-clone/api build
+          pnpm --filter @discord-clone/web build
         env:
-          NEXT_PUBLIC_API_URL: http://localhost:4000/api
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:4000/api
+          NEXT_PUBLIC_SOCKET_URL: http://127.0.0.1:4000
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @discord-clone/web exec playwright install chromium --with-deps
+
+      - name: Run Playwright E2E
+        run: pnpm test:e2e
